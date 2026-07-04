@@ -1,0 +1,487 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 1137305049, guid: a4865f1ab4504ed8a368670db22f409c, type: 3}
+  m_Name: InspectorConfig
+  m_EditorClassIdentifier: 
+  enableOdinInInspector: 1
+  defaultEditorBehaviour: 11
+  processMouseMoveInInspector: 1
+  drawingConfig:
+    configs:
+    - DrawnTypeName: Kelsey.GameComponent, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.GlobalComponent, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileDialogConfirm, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileDialogInfo, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileDialogNeutral, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MonoBehaviourDestroyedTracker, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MoveComponent, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.ParticleReturnPool, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Poolable, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.PoolInstaller, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.ReturnPoolByTime, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.RuntimeInitializer, Kelsey
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.AppleSignIn.AuthenticationApple, Kelsey.SignIn
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.AssetLoader.PreloadedAssetLoaderObject, Kelsey.AssetLoader
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.AssetLoader.ResourcesAssetLoaderObject, Kelsey.AssetLoader
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.AnchorUIObject, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.EventListenerVfxMagnet, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.InGameNotification, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.InGameNotificationRouter, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.RangeSensor, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.RangeSensor2D, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.RaySensor, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.RaySensor2D, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.ScaleComponent, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.ScannerSensor2D, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.VfxMagnetComponent, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Component.VfxParticleCollision, Kelsey.Component
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.ExLibEditor.ProjectWindowUtility+DoCreateScriptableObject,
+        Kelsey.ExLibEditor
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.ExLibEditor.ProjectWindowUtility+DoCreateScriptAsset,
+        Kelsey.ExLibEditor
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.ExLibEditor.Windows.ExSearchWindow, Kelsey.ExLibEditor
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.IAP.EventListenerIAPNoParam, Kelsey.Purchase
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.IAP.EventListenerIAPProduct, Kelsey.Purchase
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.IAP.IAPDataVariable, Kelsey.Purchase
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.IAP.IAPManager, Kelsey.Purchase
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleAudioClipComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleComponentGeneric`2, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleFontComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleMaterialComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocalePrefabComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleRendererComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleSharedMaterialComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleSpriteComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTextAssetComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTextComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTextCompositeComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTextureComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTextureMaterialComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleTMPFontComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Localization.LocaleVideoClipComponent, Kelsey.Localization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.BlockInputOnPointerDown, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventClick, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventFingerDown, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventFingerUp, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventLongTapUpdate, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventStartDrag, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventStartPinch, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventStopDrag, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventStopPinch, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventUpdateDrag, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventUpdateExtendPinch, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.InputEventUpdatePinch, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.PickingController, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.TouchInput, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.MobileInput.TouchPickable, Kelsey.Input
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdmobAppOpenVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdmobBannerVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdmobInterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdmobRewardInterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdmobRewardVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.Advertising, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AdvertisingPancake, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.ApplovinAppOpenVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.ApplovinBannerVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.ApplovinInterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.ApplovinRewardInterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.ApplovinRewardVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.AppOpenVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.BannerVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.InterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.RewardInterVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Monetization.RewardVariable, Kelsey.Monetization
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Rate.AppRatingComponent, Kelsey.Rate
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.RemoteConfig.RemoteConfig, Kelsey.RemoteConfig
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SafeArea.RuntimeSafeAreaUpdater, Kelsey.SafeArea
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SafeArea.SafeAreaComponent, Kelsey.SafeArea
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SafeArea.UnsafeAreaComponent, Kelsey.SafeArea
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SceneFlow.FirebaseInitialization, Kelsey.SceneFlow
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SceneFlow.UnityServiceInitialization, Kelsey.SceneFlow
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindFillingImage, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindGraphicColor, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindInputField, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindRendererColor, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindSlider, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BindToggle, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.BoolVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.ColorVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerBool, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerColor, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerFloat, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerGameObject, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerInt, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerNoParam, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerString, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerTransform, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerVector2, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerVector2Int, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.EventListenerVector3, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.FloatConstant, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.FloatVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.GameObjectVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.IntConstant, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.IntVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.StringConstant, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.StringVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.TransformVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.Vector2IntVariable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.Vector2Variable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.Vector3Variable, Kelsey.Scriptable
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Scriptable.ExLib.LayerNamesToMask, Kelsey.Scriptable.ExLib
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.SignIn.AuthenticationGooglePlayGames, Kelsey.SignIn
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.Audio, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.AudioComponent, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.AudioManager, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.AudioOnTriggerEnter, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.EventListenerAudio, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.EventListenerAudioHandle, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Sound.SoundEmitter, Kelsey.Sound
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncAnimatorIKTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncAnimatorMoveTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncApplicationFocusTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncApplicationPauseTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncApplicationQuitTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncAudioFilterReadTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncAwakeTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncBecameInvisibleTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncBecameVisibleTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncBeforeTransformParentChangedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncBeginDragTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCancelTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionEnter2DTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionEnterTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionExit2DTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionExitTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionStay2DTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncCollisionStayTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncControllerColliderHitTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDeselectTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDestroyTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDisableTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDragTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDrawGizmosSelectedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDrawGizmosTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncDropTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncEnableTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncEndDragTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncFixedUpdateTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncGUITrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncInitializePotentialDragTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncJointBreak2DTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncJointBreakTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncLateUpdateTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncMoveTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncOnCanvasGroupChangedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncParticleCollisionTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncParticleSystemStoppedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncParticleTriggerTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncParticleUpdateJobScheduledTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPointerClickTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPointerDownTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPointerEnterTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPointerExitTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPointerUpTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPostRenderTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPreCullTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncPreRenderTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncRectTransformDimensionsChangeTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncRectTransformRemovedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncRenderImageTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncRenderObjectTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncResetTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncScrollTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncSelectTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncServerInitializedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncStartTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncSubmitTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTransformChildrenChangedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTransformParentChangedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerEnter2DTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerEnterTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerExit2DTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerExitTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerStay2DTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncTriggerStayTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncUpdateSelectedTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncUpdateTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncValidateTrigger, Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Threading.Tasks.Triggers.AsyncWillRenderObjectTrigger,
+        Kelsey.UniTask
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.AdjustTracking, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.FirebaseTracking, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingAdjustNoParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseFiveParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseNoParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseOneParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseSixParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseThreeParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingFirebaseTwoParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScriptableTrackingNoParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.Tracking.ScritpableTrackingFirebaseFourParam, Kelsey.Tracking
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.Page, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.PageContainer, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.Popup, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.PopupBackdrop, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.PopupContainer, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.RecyclerView, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.ScriptableButtonCallbackVariable, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.ScrollViewDragPropagation, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.Sheet, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.SheetContainer, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.SimpleUITransitionAnimationSO, Kelsey.UGUI
+      EditorTypeName: 
+    - DrawnTypeName: Kelsey.UI.SimpleUITransitionComponent, Kelsey.UGUI
+      EditorTypeName: 

@@ -1,0 +1,56 @@
+{
+  "name": "com.sisus.init-args",
+  "version": "1.4.0",
+  "displayName": "Init(args)",
+  "description": "Init(args) is a Dependency Injection solution for Unity, designed from the ground up to seamlessly blend in with the traditional Unity workflow that you are well-acquainted with.",
+  "unity": "2021.3",
+  "unityRelease": "4f1",
+  "documentationUrl": "https://docs.sisus.co/init-args/",
+  "changelogUrl": "https://assetstore.unity.com/packages/tools/utilities/init-args-200530#releases",
+  "licensesUrl": "https://unity.com/legal/as-terms",
+  "icon": ".icon.png",
+  "dependencies": {
+    "com.sisus.shared": "1.0.0"
+  },
+  "keywords": [
+    "Dependency Injection",
+    "DI",
+    "Pure Dependency Injection",
+    "Inversion of Control",
+    "IOC",
+    "Dependency Inversion",
+    "SOLID",
+    "Instantiate",
+    "Add Component",
+    "Type-Safe",
+    "Parameters",
+    "Arguments"
+  ],
+  "author": {
+    "name": "Sisus",
+    "email": "support@sisus.com",
+    "url": "https://assetstore.unity.com/publishers/41398"
+  },
+  "samples": [
+  {
+    "displayName": "MonoBehaviour<T>",
+    "description": "Learn how components that derive from MonoBehaviour<T> can be initialized with arguments using AddComponent, Instantiate or new GameObject.",
+    "path": "Samples~/1. MonoBehaviourT"
+  },
+  {
+    "displayName": "Services",
+    "description": "Learn how to configure services that are automatically delivered to MonoBehaviour<T> clients using the [Service] attribute as well as the Inspector.",
+    "path": "Samples~/2. Services"
+  },
+  {
+    "displayName": "Initializers",
+    "description": "Learn how to use Initializers to further customize Init arguments received by specific MonoBehaviour<T> components.",
+    "path": "Samples~/3. Initializers"
+  },
+  {
+    "displayName": "Demo Game",
+    "description": "Contains a small game that makes use of various Init(args) features.",
+    "path": "Samples~/4. Demo Game"
+  }
+]
+}

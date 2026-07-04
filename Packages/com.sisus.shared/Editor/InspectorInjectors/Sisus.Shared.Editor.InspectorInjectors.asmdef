@@ -1,0 +1,34 @@
+{
+    "name": "Sisus.Shared.Editor.InspectorInjectors",
+    "rootNamespace": "Sisus.Shared",
+    "references": [
+        "Unity.InternalAPIEditorBridgeDev.004"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.sisus.hierarchy-folders",
+            "expression": "",
+            "define": "HIERARCHY_FOLDERS"
+        },
+        {
+            "name": "com.sisus.init-args",
+            "expression": "",
+            "define": "INIT_ARGS"
+        },
+        {
+            "name": "com.sisus.component-names",
+            "expression": "",
+            "define": "COMPONENT_NAMES"
+        }
+    ],
+    "noEngineReferences": false
+}

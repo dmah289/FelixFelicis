@@ -1,0 +1,3 @@
+[submodule "Assets/Horcrux"]
+	path = Assets/Horcrux
+	url = https://github.com/dmah289/Horcrux.git
