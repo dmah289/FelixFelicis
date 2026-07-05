@@ -88,3 +88,7 @@ Desktop.ini
 
 Assets/_TheGame/Plugins/Sirenix/Demos/
 Assets/StompyRobot/SRDebugger/PlaymakerIntegration.unitypackage.meta
+
+.utmp/
+test_BackUpThisFolder_ButDontShipItWithYourGame/
+horcrux_algo_BurstDebugInformation_DoNotShip/
