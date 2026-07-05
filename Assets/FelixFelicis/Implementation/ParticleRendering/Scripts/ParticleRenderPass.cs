@@ -1,15 +1,15 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 
-namespace FelixFelicis.SimulatingFluid
+namespace FelixFelicis.ParticleRendering
 {
-    public class FLuidRendererPass : ScriptableRenderPass
+    public class ParticleRenderPass : ScriptableRenderPass
     {
-        private readonly ParticleDrawer drawer;
+        private readonly IInstanceDrawer drawer;
 
-        public FLuidRendererPass(ParticleDrawer drawer)
+        public ParticleRenderPass(IInstanceDrawer drawer)
         {
             this.drawer = drawer;
             renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
@@ -17,9 +17,10 @@ namespace FelixFelicis.SimulatingFluid
 
         // ── RenderGraph path (Unity 6+ / URP 17+) ──────────────────────────
 
+        // RenderGraph pools PassData instances — no per-frame heap allocation after warmup.
         private class PassData
         {
-            public ParticleDrawer drawer;
+            public IInstanceDrawer drawer;
             public Camera camera;
         }
 
@@ -28,29 +29,19 @@ namespace FelixFelicis.SimulatingFluid
             var cameraData = frameData.Get<UniversalCameraData>();
             var resourceData = frameData.Get<UniversalResourceData>();
 
-            using var builder = renderGraph.AddUnsafePass<PassData>("FluidParticles", out var passData);
+            using var builder = renderGraph.AddUnsafePass<PassData>("ParticleRendering", out var passData);
 
             passData.drawer = drawer;
             passData.camera = cameraData.camera;
 
-            // Alpha blending đọc color hiện tại để trộn → cần ReadWrite
+            // Alpha blending reads current color to blend — requires ReadWrite access
             builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
             builder.AllowPassCulling(false);
 
             builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
             {
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
-
-                data.drawer.Clear();
-
-                var particles = FluidParticleProvider.Particles;
-                for (int i = 0; i < particles.Count; i++)
-                {
-                    var p = particles[i];
-                    data.drawer.AddParticle(p.center, p.radius, p.color);
-                }
-
-                data.drawer.Dispatch(cmd, data.camera);
+                data.drawer.Draw(cmd, data.camera);
             });
         }
 
@@ -60,18 +51,9 @@ namespace FelixFelicis.SimulatingFluid
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
 #pragma warning restore CS0672
         {
-            var cmd = CommandBufferPool.Get("FluidParticles");
+            var cmd = CommandBufferPool.Get("ParticleRendering");
 
-            drawer.Clear();
-
-            var particles = FluidParticleProvider.Particles;
-            for (int i = 0; i < particles.Count; i++)
-            {
-                var p = particles[i];
-                drawer.AddParticle(p.center, p.radius, p.color);
-            }
-
-            drawer.Dispatch(cmd, renderingData.cameraData.camera);
+            drawer.Draw(cmd, renderingData.cameraData.camera);
             context.ExecuteCommandBuffer(cmd);
 
             CommandBufferPool.Release(cmd);

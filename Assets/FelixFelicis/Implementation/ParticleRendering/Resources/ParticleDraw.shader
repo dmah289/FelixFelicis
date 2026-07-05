@@ -1,4 +1,4 @@
-﻿Shader "FelixFelicis/FluidDraw"
+﻿Shader "FelixFelicis/ParticleDraw"
 {
     SubShader
     {
@@ -38,9 +38,18 @@
             {
                 float2 center;
                 float radius;
-                float4 color;
+                uint packedColor;
             };
-            
+
+            float4 UnpackColor(uint packed)
+            {
+                return float4(
+                    (packed        & 0xFF) / 255.0,
+                    ((packed >> 8)  & 0xFF) / 255.0,
+                    ((packed >> 16) & 0xFF) / 255.0,
+                    ((packed >> 24) & 0xFF) / 255.0);
+            }
+
             StructuredBuffer<ParticleData> InstanceData;
             uint InstanceOffset;
 
@@ -57,7 +66,7 @@
                 o.localPos = localVert;
                 o.radius = p.radius;
                 o.clipPos = WorldToClipPos(worldPos);
-                o.color = p.color;
+                o.color = UnpackColor(p.packedColor);
                 
                 return o;
             }

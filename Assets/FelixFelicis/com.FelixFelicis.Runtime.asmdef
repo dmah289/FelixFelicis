@@ -4,7 +4,8 @@
     "references": [
         "Unity.RenderPipelines.Universal.Runtime",
         "com.horcrux.runtime",
-        "Unity.RenderPipelines.Core.Runtime"
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.Collections"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
