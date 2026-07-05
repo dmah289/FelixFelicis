@@ -84,5 +84,12 @@ namespace FelixFelicis.SimulatingFluid
                 });
             }
         }
+
+        private void OnDestroy()
+        {
+            // Xóa static list khi exit play — tránh stale data khiến render pass
+            // vẫn cố vẽ particles sau khi simulation đã bị destroy.
+            FluidParticleProvider.Particles.Clear();
+        }
     }
 }

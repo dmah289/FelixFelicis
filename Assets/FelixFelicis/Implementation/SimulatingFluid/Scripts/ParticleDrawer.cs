@@ -103,10 +103,18 @@ namespace FelixFelicis.SimulatingFluid
             instanceBuffer = null;
             argsBuffer?.Release();
             argsBuffer = null;
+
             if (material != null)
             {
-                if(Application.isPlaying) Object.Destroy(material);
+                if (Application.isPlaying) Object.Destroy(material);
                 else Object.DestroyImmediate(material);
+                material = null;
+            }
+
+            if (quadMesh != null)
+            {
+                if (Application.isPlaying) Object.Destroy(quadMesh);
+                else Object.DestroyImmediate(quadMesh);
             }
         }
     }
