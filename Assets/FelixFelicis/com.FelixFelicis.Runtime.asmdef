@@ -2,8 +2,9 @@
     "name": "com.FelixFelicis",
     "rootNamespace": "FelixFelicis",
     "references": [
-        "GUID:15fc0a57446b3144c949da3e2b9737a9",
-        "GUID:4deed2ad3aaea09409c72a5de3ec554b"
+        "Unity.RenderPipelines.Universal.Runtime",
+        "com.horcrux.runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -473,11 +473,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 1882198679}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 219a5ac977f246009b1226ab414a074a, type: 3}
+  m_Script: {fileID: 11500000, guid: 8084c0fdf90d40444afd1aafa0535353, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: com.FelixFelicis.Runtime::FelixFelicis.RuntimeImplementation.SimulatingFluid.Test
-  prefab: {fileID: 0}
-  prefabA: {fileID: 5510134810064750531, guid: a24d3787f91e4cf43b5bd42fa053e451, type: 3}
+  m_EditorClassIdentifier: com.FelixFelicis::FelixFelicis.SimulatingFluid.FluidSimDebug
+  particleCount: 200
+  spawnRange: 5
+  radiusMin: 0.1
+  radiusMax: 0.5
+  driftSpeed: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
