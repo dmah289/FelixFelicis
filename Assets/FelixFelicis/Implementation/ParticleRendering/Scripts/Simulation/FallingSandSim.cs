@@ -28,22 +28,27 @@ namespace FelixFelicis.ParticleRendering.Simulation
         [Header("Physics")]
         [SerializeField] private Vector2 gravity = new(0f, -20f);
         [SerializeField] private float airDrag = 0.01f;
-        [SerializeField] private float frictionCoef = 0.6f;
-        [SerializeField] private float contactDamping = 0.3f;
-        [SerializeField] private float wallFriction = 0.5f;
-        [SerializeField, Range(1, 4)] private int substeps = 2;
-        [SerializeField, Range(1, 6)] private int collisionIterations = 2;
+        [SerializeField] private float frictionCoef = 0.3f;
+        [SerializeField] private float contactDamping = 0.4f;
+        [SerializeField] private float wallFriction = 0.3f;
+        [SerializeField, Range(1, 4)] private int substeps = 1;
+        [SerializeField, Range(1, 6)] private int collisionIterations = 1;
+
+        [Header("Slope")]
+        [Tooltip("How much more the upper particle is pushed in a vertical contact (0=equal, 0.3=upper gets 80%)")]
+        [SerializeField, Range(0f, 0.45f)] private float slopeBias = 0.2f;
+        [Tooltip("Friction reduction for vertical contacts (0=no reduction, 1=frictionless stacking)")]
+        [SerializeField, Range(0f, 1f)] private float slopeFrictionReduction = 0.7f;
 
         [Header("Sleep")]
         [SerializeField] private float sleepVelocityThreshold = 0.02f;
-        [SerializeField] private int sleepFrames = 15;
-        [SerializeField] private float wakeOverlapFraction = 0.3f;
-        [Tooltip("Active particle must exceed this speed to wake a sleeping particle")]
-        [SerializeField] private float wakeSpeed = 0.5f;
+        [SerializeField] private int sleepFrames = 10;
+        [SerializeField] private float wakeOverlapFraction = 0.4f;
+        [SerializeField] private float wakeSpeed = 0.8f;
 
         [Header("Performance")]
         [Tooltip("Max milliseconds per FixedUpdate before skipping remaining substeps")]
-        [SerializeField] private float maxPhysicsMs = 8f;
+        [SerializeField] private float maxPhysicsMs = 6f;
 
         private SandParticle[] particles;
         private int activeCount;
@@ -51,7 +56,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private SpatialHash2D spatialHash;
         private readonly System.Diagnostics.Stopwatch stopwatch = new();
 
-        // Pre-computed per-frame constants
         private float sleepThresholdSqr;
         private float wakeSpeedSqr;
 
@@ -91,7 +95,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
             float gy = gravity.y * dtSqr;
             long budgetTicks = (long)(maxPhysicsMs * System.Diagnostics.Stopwatch.Frequency / 1000);
 
-            // Snapshot positions before all substeps — sleep compares against this
             SandPhysics.SnapshotFrameStart(particles, activeCount);
 
             for (int s = 0; s < substeps; s++)
@@ -105,14 +108,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                 SandPhysics.ResolveCollisions(
                     particles, activeCount, spatialHash,
-                    frictionCoef, contactDamping, wakeOverlapFraction,
-                    wakeSpeedSqr, collisionIterations);
+                    frictionCoef, contactDamping,
+                    wakeOverlapFraction, wakeSpeedSqr,
+                    slopeBias, slopeFrictionReduction,
+                    collisionIterations);
 
                 SandPhysics.ResolveBoundaries(
                     particles, activeCount, spawnRange, spawnRange, wallFriction);
             }
 
-            // Sleep check once per FixedUpdate (not per substep)
             SandPhysics.UpdateSleep(particles, activeCount, sleepThresholdSqr, sleepFrames);
         }
 

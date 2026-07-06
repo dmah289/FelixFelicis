@@ -21,6 +21,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
         internal readonly int[] cellCounts;
         internal readonly int[] cellOffsets;
         internal int[] sortedIndices;
+
+        // Cached cell index per particle — avoids recomputing in pass 3
+        private int[] particleCells;
         private int capacity;
 
         public SpatialHash2D(float cellSize, float minX, float maxX, float minY, float maxY, int initialCapacity)
@@ -37,10 +40,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
             cellOffsets = new int[cellCount];
             capacity = initialCapacity;
             sortedIndices = new int[capacity];
+            particleCells = new int[capacity];
         }
 
         /// <summary>
         /// Rebuild the hash from particle positions. O(n) — 3 passes.
+        /// Pass 1 caches cell index per particle to avoid recomputing in pass 3.
         /// </summary>
         public void Build(SandParticle[] particles, int count)
         {
@@ -48,6 +53,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
             {
                 capacity = count;
                 sortedIndices = new int[capacity];
+                particleCells = new int[capacity];
             }
 
             int gw = gridWidth;
@@ -57,7 +63,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
             float ox = originX;
             float oy = originY;
 
-            // Pass 1: zero + count
+            // Pass 1: compute cell index + count
             Array.Clear(cellCounts, 0, cellCount);
 
             for (int i = 0; i < count; i++)
@@ -66,7 +72,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 if (cx < 0) cx = 0; else if (cx > gwM1) cx = gwM1;
                 int cy = (int)((particles[i].pos.y - oy) * inv);
                 if (cy < 0) cy = 0; else if (cy > ghM1) cy = ghM1;
-                cellCounts[cy * gw + cx]++;
+                int cell = cy * gw + cx;
+                particleCells[i] = cell;
+                cellCounts[cell]++;
             }
 
             // Pass 2: prefix-sum → offsets
@@ -74,14 +82,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
             for (int i = 1; i < cellCount; i++)
                 cellOffsets[i] = cellOffsets[i - 1] + cellCounts[i - 1];
 
-            // Pass 3: scatter (decrement cellCounts as write cursor)
+            // Pass 3: scatter using cached cell indices (no recompute)
             for (int i = 0; i < count; i++)
             {
-                int cx = (int)((particles[i].pos.x - ox) * inv);
-                if (cx < 0) cx = 0; else if (cx > gwM1) cx = gwM1;
-                int cy = (int)((particles[i].pos.y - oy) * inv);
-                if (cy < 0) cy = 0; else if (cy > ghM1) cy = ghM1;
-                int cell = cy * gw + cx;
+                int cell = particleCells[i];
                 sortedIndices[cellOffsets[cell] + cellCounts[cell] - 1] = i;
                 cellCounts[cell]--;
             }
