@@ -10,25 +10,47 @@ namespace FelixFelicis.ParticleRendering.Simulation
     /// Slope behavior: height-biased position correction + slope-dependent friction
     /// produce natural gentle sand dunes (~20-25° angle of repose).
     /// </para>
+    /// <para>
+    /// Sleep state stored in parallel arrays (<c>isSleeping[]</c>, <c>sleepCounters[]</c>)
+    /// for cache-friendly skip checks. Active-index iteration skips sleeping particles
+    /// in O(awake) instead of O(n) for non-collision loops.
+    /// </para>
     /// </summary>
     public static class SandPhysics
     {
-        public static void SnapshotFrameStart(SandParticle[] p, int count)
+        /// <summary>
+        /// Scans <paramref name="isSleeping"/> and writes indices of awake particles
+        /// into <paramref name="activeIndices"/>. Returns the awake count.
+        /// O(n) scan with excellent cache behavior (64 bools per cache line).
+        /// </summary>
+        public static int BuildActiveIndices(bool[] isSleeping, int count, int[] activeIndices)
         {
+            int awake = 0;
             for (int i = 0; i < count; i++)
             {
-                if (p[i].isSleeping) continue;
+                if (!isSleeping[i])
+                    activeIndices[awake++] = i;
+            }
+            return awake;
+        }
+
+        public static void SnapshotFrameStart(
+            SandParticle[] p, int[] activeIndices, int awakeCount)
+        {
+            for (int a = 0; a < awakeCount; a++)
+            {
+                int i = activeIndices[a];
                 p[i].frameStartPos = p[i].pos;
             }
         }
 
         public static void Integrate(
-            SandParticle[] p, int count,
+            SandParticle[] p, int[] activeIndices, int awakeCount,
             float gx, float gy, float dragMul)
         {
-            for (int i = 0; i < count; i++)
+            for (int a = 0; a < awakeCount; a++)
             {
-                if (p[i].isSleeping) continue;
+                int i = activeIndices[a];
 
                 float vx = (p[i].pos.x - p[i].prevPos.x) * dragMul;
                 float vy = (p[i].pos.y - p[i].prevPos.y) * dragMul;
@@ -48,14 +70,22 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// Slope mechanics: height-biased correction ratio pushes upper particles more,
         /// and slope-dependent friction lets them slide off vertical stacks easily.
         /// </para>
+        /// <para>
+        /// Outer loop preserves <c>for i=0..count</c> order for exact pair processing.
+        /// Sleep checks use compact <c>isSleeping[]</c> array (1 byte per check vs 36-byte
+        /// struct load). Wake events tracked via <paramref name="wakeOccurred"/> so caller
+        /// can rebuild active indices.
+        /// </para>
         /// </summary>
         public static void ResolveCollisions(
             SandParticle[] p, int count,
             SpatialHash2D hash,
+            bool[] isSleeping, byte[] sleepCounters,
             float frictionCoef, float contactDamping,
             float wakeOverlapFraction, float wakeSpeedSqr,
             float slopeBias, float slopeFrictionReduction,
-            int iterations)
+            int iterations,
+            ref bool wakeOccurred)
         {
             int[] sorted = hash.sortedIndices;
             int[] offsets = hash.cellOffsets;
@@ -71,7 +101,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
             {
                 for (int i = 0; i < count; i++)
                 {
-                    if (p[i].isSleeping) continue;
+                    if (isSleeping[i]) continue;
 
                     float px = p[i].pos.x;
                     float py = p[i].pos.y;
@@ -99,7 +129,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                             for (int k = 0; k < cnt; k++)
                             {
                                 int j = sorted[off + k];
-                                if (j <= i && !p[j].isSleeping) continue;
+                                if (j <= i && !isSleeping[j]) continue;
 
                                 float ddx = p[j].pos.x - px;
                                 float ddy = p[j].pos.y - py;
@@ -121,7 +151,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                                 float verticalness = nny * nny; // squared abs
 
                                 // Wake: only if active particle has significant speed
-                                if (p[j].isSleeping)
+                                if (isSleeping[j])
                                 {
                                     float wt = (ri < p[j].radius ? ri : p[j].radius) * wakeOverlapFraction;
                                     float avx = p[i].pos.x - p[i].prevPos.x;
@@ -129,15 +159,16 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                                     if (overlap > wt && avx * avx + avy * avy > wakeSpeedSqr)
                                     {
-                                        p[j].isSleeping = false;
-                                        p[j].sleepCounter = 0;
+                                        isSleeping[j] = false;
+                                        sleepCounters[j] = 0;
                                         p[j].prevPos = p[j].pos;
+                                        wakeOccurred = true;
                                     }
                                 }
 
                                 // Position correction with height-biased ratio:
                                 // Upper particle gets pushed more → slides off → gentle slopes
-                                if (p[j].isSleeping)
+                                if (isSleeping[j])
                                 {
                                     p[i].pos.x -= nnx * overlap;
                                     p[i].pos.y -= nny * overlap;
@@ -177,7 +208,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                                     float tdx = ttx * invT;
                                     float tdy = tty * invT;
 
-                                    if (p[j].isSleeping)
+                                    if (isSleeping[j])
                                     {
                                         p[i].pos.x -= tdx * corr;
                                         p[i].pos.y -= tdy * corr;
@@ -193,7 +224,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                                 }
 
                                 // Contact damping
-                                if (!p[j].isSleeping)
+                                if (!isSleeping[j])
                                 {
                                     float dh = relDotN * contactDamping * 0.5f;
                                     p[i].prevPos.x += nnx * dh;
@@ -215,16 +246,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
         }
 
         public static void ResolveBoundaries(
-            SandParticle[] p, int count,
+            SandParticle[] p, int[] activeIndices, int awakeCount,
             float boundsX, float boundsY, float wallFriction)
         {
             float negBX = -boundsX;
             float negBY = -boundsY;
 
-            for (int i = 0; i < count; i++)
+            for (int a = 0; a < awakeCount; a++)
             {
-                if (p[i].isSleeping) continue;
-
+                int i = activeIndices[a];
                 float r = p[i].radius;
 
                 // Floor
@@ -283,28 +313,29 @@ namespace FelixFelicis.ParticleRendering.Simulation
         }
 
         public static void UpdateSleep(
-            SandParticle[] p, int count,
+            SandParticle[] p, int[] activeIndices, int awakeCount,
+            bool[] isSleeping, byte[] sleepCounters,
             float sleepThresholdSqr, int sleepFrames)
         {
-            for (int i = 0; i < count; i++)
+            for (int a = 0; a < awakeCount; a++)
             {
-                if (p[i].isSleeping) continue;
+                int i = activeIndices[a];
 
                 float dx = p[i].pos.x - p[i].frameStartPos.x;
                 float dy = p[i].pos.y - p[i].frameStartPos.y;
 
                 if (dx * dx + dy * dy < sleepThresholdSqr)
                 {
-                    p[i].sleepCounter++;
-                    if (p[i].sleepCounter >= sleepFrames)
+                    sleepCounters[i]++;
+                    if (sleepCounters[i] >= sleepFrames)
                     {
-                        p[i].isSleeping = true;
+                        isSleeping[i] = true;
                         p[i].prevPos = p[i].pos;
                     }
                 }
                 else
                 {
-                    p[i].sleepCounter = 0;
+                    sleepCounters[i] = 0;
                 }
             }
         }

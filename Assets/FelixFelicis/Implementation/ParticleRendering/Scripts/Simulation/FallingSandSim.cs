@@ -7,6 +7,11 @@ namespace FelixFelicis.ParticleRendering.Simulation
     /// Falling sand simulation orchestrator.
     /// Runs PBD physics in <see cref="FixedUpdate"/>, uploads to
     /// <see cref="ParticleProvider.Writer"/> in <see cref="LateUpdate"/>.
+    /// <para>
+    /// Sleep state stored in parallel arrays for cache-friendly skip checks.
+    /// Active-index iteration skips sleeping particles in O(awake) instead of O(n).
+    /// Render upload skipped entirely when all particles are settled.
+    /// </para>
     /// </summary>
     public class FallingSandSim : MonoBehaviour
     {
@@ -51,7 +56,11 @@ namespace FelixFelicis.ParticleRendering.Simulation
         [SerializeField] private float maxPhysicsMs = 6f;
 
         private SandParticle[] particles;
+        private bool[] isSleeping;
+        private byte[] sleepCounters;
+        private int[] activeIndices;
         private int activeCount;
+        private int awakeCount;
         private float streamAccumulator;
         private SpatialHash2D spatialHash;
         private readonly System.Diagnostics.Stopwatch stopwatch = new();
@@ -59,9 +68,17 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private float sleepThresholdSqr;
         private float wakeSpeedSqr;
 
+        // Skip render upload when nothing moved (all sleeping, no spawns).
+        // ParticleDrawer keeps frameDataReady=true from last upload,
+        // Draw() reuses the GPU buffer with correct (unchanged) positions.
+        private bool needsRenderUpload;
+
         private void Start()
         {
             particles = new SandParticle[maxParticles];
+            isSleeping = new bool[maxParticles];
+            sleepCounters = new byte[maxParticles];
+            activeIndices = new int[maxParticles];
             activeCount = 0;
 
             float cellSize = radiusMax * 2.5f;
@@ -86,6 +103,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             if (activeCount == 0) return;
 
+            awakeCount = SandPhysics.BuildActiveIndices(isSleeping, activeCount, activeIndices);
+            if (awakeCount == 0) return;
+
+            needsRenderUpload = true;
             stopwatch.Restart();
 
             float subDt = Time.fixedDeltaTime / substeps;
@@ -95,34 +116,45 @@ namespace FelixFelicis.ParticleRendering.Simulation
             float gy = gravity.y * dtSqr;
             long budgetTicks = (long)(maxPhysicsMs * System.Diagnostics.Stopwatch.Frequency / 1000);
 
-            SandPhysics.SnapshotFrameStart(particles, activeCount);
+            SandPhysics.SnapshotFrameStart(particles, activeIndices, awakeCount);
 
             for (int s = 0; s < substeps; s++)
             {
                 if (s > 0 && stopwatch.ElapsedTicks > budgetTicks)
                     break;
 
-                SandPhysics.Integrate(particles, activeCount, gx, gy, dragMul);
+                SandPhysics.Integrate(particles, activeIndices, awakeCount, gx, gy, dragMul);
 
                 spatialHash.Build(particles, activeCount);
 
+                bool wakeOccurred = false;
                 SandPhysics.ResolveCollisions(
                     particles, activeCount, spatialHash,
+                    isSleeping, sleepCounters,
                     frictionCoef, contactDamping,
                     wakeOverlapFraction, wakeSpeedSqr,
                     slopeBias, slopeFrictionReduction,
-                    collisionIterations);
+                    collisionIterations,
+                    ref wakeOccurred);
+
+                if (wakeOccurred)
+                    awakeCount = SandPhysics.BuildActiveIndices(
+                        isSleeping, activeCount, activeIndices);
 
                 SandPhysics.ResolveBoundaries(
-                    particles, activeCount, spawnRange, spawnRange, wallFriction);
+                    particles, activeIndices, awakeCount, spawnRange, spawnRange, wallFriction);
             }
 
-            SandPhysics.UpdateSleep(particles, activeCount, sleepThresholdSqr, sleepFrames);
+            SandPhysics.UpdateSleep(
+                particles, activeIndices, awakeCount,
+                isSleeping, sleepCounters,
+                sleepThresholdSqr, sleepFrames);
         }
 
         private void LateUpdate()
         {
-            if (activeCount == 0) return;
+            if (activeCount == 0 || !needsRenderUpload) return;
+            needsRenderUpload = false;
 
             var writer = ParticleProvider.Writer;
             if (writer == null) return;
@@ -179,10 +211,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 frameStartPos = position,
                 radius = Random.Range(radiusMin, radiusMax),
                 packedColor = SandColors.GeneratePacked(),
-                sleepCounter = 0,
-                isSleeping = false,
             };
+            isSleeping[activeCount] = false;
+            sleepCounters[activeCount] = 0;
             activeCount++;
+
+            needsRenderUpload = true;
         }
 
         private Vector2 RandomPositionInRange()
