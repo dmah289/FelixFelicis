@@ -20,7 +20,9 @@ namespace FelixFelicis.ParticleRendering
         [Header("Animation")]
         [SerializeField] private float driftSpeed = 1f;
 
-        // Pre-allocated arrays — no per-frame allocations
+        // Pre-allocated arrays — no per-frame allocations.
+        // Size captured once in Start(); runtime Inspector changes require re-enter Play.
+        private int count;
         private Vector2[] positions;
         private Vector2[] velocities;
         private float[] radii;
@@ -28,12 +30,14 @@ namespace FelixFelicis.ParticleRendering
 
         private void Start()
         {
-            positions = new Vector2[particleCount];
-            velocities = new Vector2[particleCount];
-            radii = new float[particleCount];
-            packedColors = new uint[particleCount];
+            count = particleCount;
 
-            for (int i = 0; i < particleCount; i++)
+            positions = new Vector2[count];
+            velocities = new Vector2[count];
+            radii = new float[count];
+            packedColors = new uint[count];
+
+            for (int i = 0; i < count; i++)
             {
                 positions[i] = new Vector2(
                     Random.Range(-spawnRange, spawnRange),
@@ -51,9 +55,11 @@ namespace FelixFelicis.ParticleRendering
 
         private void Update()
         {
-            for (int i = 0; i < particleCount; i++)
+            float dt = driftSpeed * Time.deltaTime;
+
+            for (int i = 0; i < count; i++)
             {
-                positions[i] += velocities[i] * (driftSpeed * Time.deltaTime);
+                positions[i] += velocities[i] * dt;
 
                 if (positions[i].x > spawnRange || positions[i].x < -spawnRange)
                     velocities[i].x = -velocities[i].x;
@@ -66,10 +72,10 @@ namespace FelixFelicis.ParticleRendering
             var writer = ParticleProvider.Writer;
             if (writer == null) return;
 
-            NativeArray<ParticleRenderData> buffer = writer.BeginFrame(particleCount);
+            NativeArray<ParticleRenderData> buffer = writer.BeginFrame(count);
             if (!buffer.IsCreated) return;
 
-            for (int i = 0; i < particleCount; i++)
+            for (int i = 0; i < count; i++)
             {
                 buffer[i] = new ParticleRenderData
                 {
@@ -79,7 +85,7 @@ namespace FelixFelicis.ParticleRendering
                 };
             }
 
-            writer.EndFrame(particleCount);
+            writer.EndFrame(count);
         }
     }
 }

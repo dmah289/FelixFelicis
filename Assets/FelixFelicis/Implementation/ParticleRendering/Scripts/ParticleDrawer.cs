@@ -16,6 +16,12 @@ namespace FelixFelicis.ParticleRendering
     ///   <item>Render pass(es) call <see cref="Draw"/> per camera (no data upload, just bind + draw)</item>
     /// </list>
     /// </summary>
+    /// <remarks>
+    /// All per-draw uniforms are set via CommandBuffer (cmd.SetGlobal*) instead of
+    /// material.Set*() to ensure correct binding on RenderGraph + Vulkan.
+    /// material.Set*() is immediate and may not sync with deferred CommandBuffer
+    /// execution on Vulkan's descriptor set model.
+    /// </remarks>
     public class ParticleDrawer : IInstanceWriter<ParticleRenderData>, IInstanceDrawer, IDisposable
     {
         private static readonly int InstanceDataID = Shader.PropertyToID("InstanceData");
@@ -26,7 +32,7 @@ namespace FelixFelicis.ParticleRendering
 
         private static readonly int Stride = Marshal.SizeOf<ParticleRenderData>();
 
-        private const string ShaderName = "FelixFelicis/ParticleDraw";
+        private const string ShaderResourceName = "ParticleDraw";
         private const int BufferCount = 2;
 
         private Mesh quadMesh;
@@ -38,13 +44,14 @@ namespace FelixFelicis.ParticleRendering
         private int writeIndex;
         private GraphicsBuffer argsBuffer;
 
-        private int cachedScreenWidth, cachedScreenHeight;
+        // CPU-side staging — NativeArray allocated once, reused every frame
+        private NativeArray<ParticleRenderData> cpuStaging;
+
         private int lastArgsInstanceCount = -1;
 
         private int currentFrameCount;
         private int lastUploadFrame = -1;
         private bool frameDataReady;
-        private bool isBufferLocked;
 
         public ParticleDrawer()
         {
@@ -52,22 +59,23 @@ namespace FelixFelicis.ParticleRendering
         }
 
         /// <summary>
-        /// Lazy init — avoids Shader.Find returning null when Create() runs before shader import.
+        /// Lazy init — uses Resources.Load instead of Shader.Find to guarantee the shader
+        /// is included in builds. Shader.Find only works if the shader is referenced by a
+        /// material asset or listed in Always Included Shaders — neither applies here since
+        /// the material is created at runtime.
         /// </summary>
         private bool EnsureMaterial()
         {
             if (material != null) return true;
 
-            var shader = Shader.Find(ShaderName);
+            var shader = Resources.Load<Shader>(ShaderResourceName);
             if (shader == null)
             {
-                Debug.LogWarning($"[ParticleDrawer] Shader '{ShaderName}' not found yet.");
+                Debug.LogError($"[ParticleDrawer] Shader '{ShaderResourceName}' not found in Resources.");
                 return false;
             }
 
             material = new Material(shader);
-            material.SetInt(UseScreenSpaceID, 0);
-            material.SetInt(InstanceOffsetID, 0);
             return true;
         }
 
@@ -84,9 +92,24 @@ namespace FelixFelicis.ParticleRendering
             buffer?.Release();
             buffer = new GraphicsBuffer(
                 GraphicsBuffer.Target.Structured,
-                GraphicsBuffer.UsageFlags.LockBufferForWrite,
                 count, Stride);
             return true;
+        }
+
+        /// <summary>
+        /// Ensures CPU staging array has at least <paramref name="count"/> capacity.
+        /// Grow-only to avoid repeated allocation when count fluctuates.
+        /// </summary>
+        private void EnsureStagingCapacity(int count)
+        {
+            if (cpuStaging.IsCreated && cpuStaging.Length >= count)
+                return;
+
+            if (cpuStaging.IsCreated)
+                cpuStaging.Dispose();
+
+            cpuStaging = new NativeArray<ParticleRenderData>(
+                count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
 
         /// <inheritdoc/>
@@ -104,33 +127,24 @@ namespace FelixFelicis.ParticleRendering
                 return default;
             }
 
-            // Safety: if previous BeginFrame was not followed by EndFrame (e.g. exception),
-            // unlock the orphaned buffer before swapping
-            if (isBufferLocked)
-            {
-                var lockedBuffer = instanceBuffers[writeIndex];
-                if (lockedBuffer != null && lockedBuffer.IsValid())
-                    lockedBuffer.UnlockBufferAfterWrite<ParticleRenderData>(0);
-                isBufferLocked = false;
-            }
-
             // Swap to the other buffer so GPU can finish reading the previous one
             writeIndex = (writeIndex + 1) % BufferCount;
 
             EnsureInstanceBuffer(writeIndex, count);
+            EnsureStagingCapacity(count);
 
             currentFrameCount = count;
-            isBufferLocked = true;
-            return instanceBuffers[writeIndex].LockBufferForWrite<ParticleRenderData>(0, count);
+            return cpuStaging;
         }
 
         /// <inheritdoc/>
         public void EndFrame(int count)
         {
-            if (!isBufferLocked) return;
+            if (count == 0) return;
 
-            instanceBuffers[writeIndex].UnlockBufferAfterWrite<ParticleRenderData>(count);
-            isBufferLocked = false;
+            // Upload CPU staging → GPU buffer (1 memcpy, reliable on all drivers)
+            instanceBuffers[writeIndex].SetData(cpuStaging, 0, 0, count);
+
             lastUploadFrame = Time.frameCount;
             frameDataReady = true;
 
@@ -151,9 +165,6 @@ namespace FelixFelicis.ParticleRendering
                 argsBuffer.SetData(args);
                 lastArgsInstanceCount = count;
             }
-
-            // Always rebind after swap — the active buffer changed each frame
-            material.SetBuffer(InstanceDataID, instanceBuffers[writeIndex]);
         }
 
         /// <inheritdoc/>
@@ -161,30 +172,24 @@ namespace FelixFelicis.ParticleRendering
         {
             if (!frameDataReady || currentFrameCount == 0) return;
 
-            if (cam.pixelWidth != cachedScreenWidth || cam.pixelHeight != cachedScreenHeight)
-            {
-                cachedScreenWidth = cam.pixelWidth;
-                cachedScreenHeight = cam.pixelHeight;
-                material.SetVector(ScreenSizeID,
-                    new Vector4(cachedScreenWidth, cachedScreenHeight, 0, 0));
-            }
+            // All uniforms via CommandBuffer — syncs correctly with RenderGraph + Vulkan.
+            // material.Set*() is immediate mode and may not be visible to deferred
+            // command buffer execution on Vulkan's descriptor set model.
+            cmd.SetGlobalBuffer(InstanceDataID, instanceBuffers[writeIndex]);
+            cmd.SetGlobalInt(UseScreenSpaceID, 0);
+            cmd.SetGlobalInt(InstanceOffsetID, 0);
+            cmd.SetGlobalVector(ScreenSizeID,
+                new Vector4(cam.pixelWidth, cam.pixelHeight, 0, 0));
 
             Matrix4x4 vp = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true)
                          * cam.worldToCameraMatrix;
-            material.SetMatrix(WorldToClipID, vp);
+            cmd.SetGlobalMatrix(WorldToClipID, vp);
 
             cmd.DrawMeshInstancedIndirect(quadMesh, 0, material, 0, argsBuffer);
         }
 
         public void Dispose()
         {
-            // Unlock before release to avoid driver warnings
-            if (isBufferLocked && instanceBuffers[writeIndex] != null && instanceBuffers[writeIndex].IsValid())
-            {
-                instanceBuffers[writeIndex].UnlockBufferAfterWrite<ParticleRenderData>(0);
-                isBufferLocked = false;
-            }
-
             for (int i = 0; i < BufferCount; i++)
             {
                 instanceBuffers[i]?.Release();
@@ -193,6 +198,12 @@ namespace FelixFelicis.ParticleRendering
 
             argsBuffer?.Release();
             argsBuffer = null;
+
+            if (cpuStaging.IsCreated)
+            {
+                cpuStaging.Dispose();
+                cpuStaging = default;
+            }
 
             if (material != null)
             {

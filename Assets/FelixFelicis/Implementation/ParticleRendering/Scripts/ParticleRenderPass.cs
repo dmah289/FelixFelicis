@@ -5,6 +5,15 @@ using UnityEngine.Rendering.Universal;
 
 namespace FelixFelicis.ParticleRendering
 {
+    /// <summary>
+    /// URP render pass that bridges the engine's rendering pipeline to <see cref="IInstanceDrawer"/>.
+    /// <para><b>RenderGraph path</b> (Unity 6+): uses <c>AddUnsafePass</c> because
+    /// <c>DrawMeshInstancedIndirect</c> is a raw command buffer operation unsupported
+    /// by <c>AddRasterPass</c>. Explicitly calls <c>SetRenderTarget</c> inside the
+    /// render func — <c>AddUnsafePass</c> declares resource dependencies but does
+    /// <b>not</b> auto-bind render targets (unlike <c>AddRasterPass</c>).</para>
+    /// <para><b>Legacy path</b>: compatibility fallback via <c>Execute()</c>.</para>
+    /// </summary>
     public class ParticleRenderPass : ScriptableRenderPass
     {
         private readonly IInstanceDrawer drawer;
@@ -22,6 +31,8 @@ namespace FelixFelicis.ParticleRendering
         {
             public IInstanceDrawer drawer;
             public Camera camera;
+            public TextureHandle colorTarget;
+            public TextureHandle depthTarget;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -33,13 +44,20 @@ namespace FelixFelicis.ParticleRendering
 
             passData.drawer = drawer;
             passData.camera = cameraData.camera;
+            passData.colorTarget = resourceData.activeColorTexture;
+            passData.depthTarget = resourceData.activeDepthTexture;
 
             // Alpha blending reads current color to blend — requires ReadWrite access
             builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
+            builder.UseTexture(resourceData.activeDepthTexture, AccessFlags.Read);
             builder.AllowPassCulling(false);
 
             builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
             {
+                // Explicitly bind render target — AddUnsafePass does NOT auto-bind.
+                // Without this, draw commands render into nothing on Vulkan/mobile.
+                context.cmd.SetRenderTarget(data.colorTarget, data.depthTarget);
+
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
                 data.drawer.Draw(cmd, data.camera);
             });

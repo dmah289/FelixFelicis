@@ -1,4 +1,4 @@
-﻿Shader "FelixFelicis/ParticleDraw"
+Shader "FelixFelicis/ParticleDraw"
 {
     SubShader
     {
@@ -6,19 +6,21 @@
         {
             "RenderType"="Transparent"
             "Queue"="Transparent"
+            "RenderPipeline"="UniversalPipeline"
         }
-        
+
         ZWrite Off
         ZTest Always
         Cull Off
         Blend SrcAlpha OneMinusSrcAlpha
-        
+
         Pass
         {
-            CGPROGRAM
+            HLSLPROGRAM
+            #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-            #include "UnityCG.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "SpaceTransformHelper.hlsl"
 
             struct appdata
@@ -51,36 +53,35 @@
             }
 
             StructuredBuffer<ParticleData> InstanceData;
-            uint InstanceOffset;
 
             v2f vert(appdata v, uint instanceID : SV_InstanceID)
             {
                 ParticleData p = InstanceData[instanceID + InstanceOffset];
                 v2f o;
-                
+
                 float2 aaPadding = useScreenSpace ? 2.0 : p.radius * 0.1;
                 float2 diameter = p.radius * 2;
                 float2 localVert = v.vertex.xy * (diameter + aaPadding);
                 float3 worldPos = float3(localVert + p.center, 0);
-                
+
                 o.localPos = localVert;
                 o.radius = p.radius;
                 o.clipPos = WorldToClipPos(worldPos);
                 o.color = UnpackColor(p.packedColor);
-                
+
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            half4 frag(v2f i) : SV_Target
             {
                 float sdf = length(i.localPos) - i.radius;
-                
+
                 float fw = fwidth(sdf);
                 float alpha = 1.0 - smoothstep(-0.5 * fw, 0.5 * fw, sdf);
-                
-                return float4(i.color.rgb, i.color.a * alpha);
+
+                return half4(i.color.rgb, i.color.a * alpha);
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }

@@ -1,7 +1,7 @@
 # Particle Rendering
 
 > Vẽ hàng nghìn particle circles trên GPU trong 1 draw call.
-> GPU Instancing + SDF + zero-copy upload, tích hợp URP (Unity 6).
+> GPU Instancing + SDF + NativeArray upload, tích hợp URP RenderGraph (Unity 6).
 
 Namespace: `FelixFelicis.ParticleRendering` · Assembly: `com.FelixFelicis`
 
@@ -37,7 +37,7 @@ GPU Instancing giải quyết bằng cách vẽ cùng 1 mesh **N lần** trong *
 Simulation (CPU) tạo data, GPU cần đọc để vẽ. 3 cách, từ chậm đến nhanh:
 
 ```
-Cách 1: SetData(List<T>)           Cách 2: SetData(NativeArray<T>)     Cách 3: LockBufferForWrite() ✓
+Cách 1: SetData(List<T>)           Cách 2: SetData(NativeArray<T>) ✓    Cách 3: LockBufferForWrite()
 ┌──────────────┐                   ┌──────────────┐                    ┌──────────────┐
 │ List<T>      │ managed heap      │ NativeArray  │ unmanaged          │ NativeArray  │ GPU staging
 │ (GC tracked) │                   │ (no GC)      │                    │ (mapped)     │
@@ -55,7 +55,9 @@ Cách 1: SetData(List<T>)           Cách 2: SetData(NativeArray<T>)     Cách 3
     2 copies                           1 copy                              0 copies
 ```
 
-Hệ thống dùng **Cách 3** — `GraphicsBuffer` với `UsageFlags.LockBufferForWrite`. Buffer nằm trong GPU-visible CPU memory (D3D12 Upload Heap). CPU ghi nhanh, GPU đọc trực tiếp, không copy trung gian.
+Hệ thống dùng **Cách 2** — `NativeArray<T>` (persistent, grow-only) làm CPU staging buffer, upload mỗi frame qua `GraphicsBuffer.SetData(NativeArray, 0, 0, count)`. Tổng **1 memcpy** per frame.
+
+> **Tại sao không dùng Cách 3 (zero-copy)?** `LockBufferForWrite()` map buffer vào GPU-visible CPU memory. Trên **desktop D3D11/D3D12** hoạt động tốt. Trên **mobile Vulkan** (đặc biệt Mali Valhall — G610, G710, G720), driver không flush CPU cache sau khi CPU ghi → GPU đọc **stale data** → particles invisible. Unity không expose memory barrier API để workaround. `SetData(NativeArray)` đi qua Unity's managed upload path — driver tự xử lý cache coherence. Trade-off 1 memcpy (10K × 16B = 160 KB) ≈ 0.05ms — negligible.
 
 ---
 
@@ -68,10 +70,10 @@ Single buffer:                     Double buffer:
 Frame N:   CPU ──write──► A        Frame N:   CPU ──write──► A    GPU reads B
 Frame N+1: CPU ──write──► A ⚠️     Frame N+1: CPU ──write──► B    GPU reads A
            GPU vẫn đọc A!          Frame N+2: CPU ──write──► A    GPU reads B
-           → D3D11 slow path                   Không conflict ✓
+           → GPU slow path                    Không conflict ✓
 ```
 
-Triển khai: 2 `GraphicsBuffer`, `writeIndex` swap mỗi frame bằng `(writeIndex + 1) % 2`. Chi phí thêm 1 buffer (10K × 16B = 160 KB).
+Triển khai: 2 `GraphicsBuffer`, `writeIndex` swap mỗi frame bằng `(writeIndex + 1) % 2`. Sim ghi vào CPU staging `NativeArray`, rồi `SetData` upload vào buffer ở `writeIndex`. Chi phí thêm 1 buffer (10K × 16B = 160 KB).
 
 ---
 
@@ -147,21 +149,28 @@ Struct giảm 28 → **16 bytes** (power-of-2, GPU cache-aligned, −43% bandwid
 ### 1.8 URP Integration
 
 ```
-ScriptableRendererFeature (asset, sống qua domain reload)
+ScriptableRendererFeature (composition root, sống qua domain reload)
   ├─ Create()          → tạo drawer + pass, đăng ký provider
   ├─ AddRenderPasses() → enqueue pass mỗi frame
   └─ Dispose()         → giải phóng GPU resources
 
-ScriptableRenderPass (logic vẽ)
+ScriptableRenderPass (bridge URP ↔ IInstanceDrawer)
   ├─ RecordRenderGraph()  → Unity 6+ RenderGraph (AddUnsafePass)
-  └─ Execute()            → Legacy Compatibility Mode
+  └─ Execute()            → Legacy Compatibility Mode (deprecated từ 6.3)
 ```
 
-`AddUnsafePass` (không phải `AddRasterPass`) vì `DrawMeshInstancedIndirect` là raw command buffer operation.
+**RenderGraph path (primary):**
+
+`AddUnsafePass` (không phải `AddRasterPass`) vì `DrawMeshInstancedIndirect` là raw command buffer operation — `AddRasterPass` chỉ hỗ trợ standard rasterization API.
 
 `AllowPassCulling(false)` — RenderGraph không tự detect dependency của procedural draw.
 
-`AccessFlags.ReadWrite` trên `activeColorTexture` — alpha blending đọc pixel hiện tại để trộn.
+`UseTexture(activeColorTexture, ReadWrite)` — alpha blending đọc pixel hiện tại để trộn.
+`UseTexture(activeDepthTexture, Read)` — depth buffer cần được bound dù `ZTest Always`.
+
+**Explicit `SetRenderTarget`** — `AddUnsafePass` khai báo texture dependencies nhưng **KHÔNG tự bind render targets** (khác `AddRasterPass` tự bind). Nếu không gọi `context.cmd.SetRenderTarget(color, depth)` trong render func, draw commands render vào "nothing" trên Vulkan/mobile. D3D11 Editor auto-bind từ previous pass nên lỗi chỉ lộ trên build.
+
+**`cmd.SetGlobal*()`** — Tất cả uniforms (buffer, matrix, vector, int) được set qua CommandBuffer thay vì `material.Set*()`. Chi tiết tại [2.3](#23-commandbuffer-uniforms-thay-vì-materialset).
 
 **SO ↔ MB bridge:** Feature (ScriptableObject) không reference được MonoBehaviour → static `ParticleProvider` làm cầu nối, expose qua interface.
 
@@ -180,16 +189,18 @@ SoA arrays ──COPY 1──► Provider List<T> ──COPY 2──► Drawer L
   radii[]                                         AddParticle()→
   colors[]                                        reassemble→Add()
 
-Hiện tại (0 copies):
-SoA arrays ──ghi thẳng──► NativeArray (GPU staging memory) ──► GPU đọc
-                          LockBufferForWrite()                  không copy
+Hiện tại (1 copy):
+SoA arrays ──ghi thẳng──► NativeArray (CPU staging) ──SetData──► GPU
+                          persistent, grow-only          memcpy
 ```
 
 | Bước tối ưu | Copy loại bỏ | Cách |
 |-------------|-------------|------|
 | Bỏ `AddParticle()` per-element loop | Copy #2 | Drawer không giữ List riêng, nhận data trực tiếp |
-| Bỏ `SetData(List<T>)` | Copy #3 | `LockBufferForWrite()` → sim ghi thẳng GPU staging |
+| Bỏ `SetData(List<T>)` | Copy #3 (pin) | `NativeArray` unmanaged — không cần GC pin |
 | Bỏ Provider `List<T>` | Copy #1 | Provider chỉ giữ drawer reference, không giữ data |
+
+Copy còn lại: 1 memcpy trong `SetData(NativeArray, 0, 0, count)` — đáng tin cậy trên mọi GPU driver bao gồm mobile Vulkan (xem [1.2](#12-cpu--gpu-data-transfer)).
 
 ### 2.2 Grow-only buffer
 
@@ -197,27 +208,43 @@ Khi particle count giảm (10K → 5K), buffer **không shrink** — giữ nguy�
 
 Tại sao: tạo `GraphicsBuffer` mới tốn thời gian (GPU resource allocation). Nếu count dao động 5K–10K mỗi frame, shrink sẽ tạo/hủy buffer liên tục → stutter.
 
-### 2.3 Uniform caching
+Áp dụng cho cả GPU instance buffers lẫn CPU staging `NativeArray`.
 
-Mỗi `material.Set*()` có CPU overhead: hash lookup → validation → đánh dấu material dirty. Với 5 lệnh Set × 60 FPS × nhiều camera = hàng trăm lần gọi thừa mỗi giây.
+### 2.3 CommandBuffer uniforms thay vì `material.Set*()`
 
-| Uniform | Tần suất thay đổi | Chiến lược |
-|---------|-------------------|------------|
-| `UseScreenSpace = 0` | Không bao giờ | Set 1 lần trong `EnsureMaterial()` |
-| `InstanceOffset = 0` | Không bao giờ | Set 1 lần trong `EnsureMaterial()` |
-| `ScreenSize` | Khi resize window | Dirty flag (`cachedScreenWidth/Height`) |
-| `InstanceData` (buffer) | Mỗi frame (double buffer swap) | Luôn rebind sau swap |
-| `WorldToClipSpace` (VP matrix) | Mỗi camera | Luôn set — camera khác nhau |
+`material.Set*()` là **immediate mode** — set property trên Material object trên CPU ngay lập tức. Trong **RenderGraph**, command buffer execution là **deferred** — GPU đọc uniforms tại thời điểm execute, không phải lúc record.
+
+Trên **D3D11** (Editor), driver tự sync material state trước mỗi draw call → hoạt động.
+
+Trên **Vulkan** (Android build), descriptor set caching có thể khiến material property changes **chưa visible** cho GPU tại thời điểm execute. `cmd.SetGlobal*()` ghi trực tiếp vào command stream — GPU đọc đúng giá trị tại đúng thời điểm.
+
+```
+material.Set*() (immediate)              cmd.SetGlobal*() (deferred) ✓
+┌──────────────────────┐                ┌──────────────────────┐
+│ CPU: set property    │                │ Record: ghi vào cmd  │
+│ GPU: đọc khi nào?    │ ← race        │ Execute: GPU đọc     │ ← deterministic
+│      có thể stale    │                │          đúng lúc    │
+└──────────────────────┘                └──────────────────────┘
+```
+
+| Uniform | Cách set |
+|---------|----------|
+| `InstanceData` (buffer) | `cmd.SetGlobalBuffer` — rebind sau double buffer swap |
+| `WorldToClipSpace` (VP matrix) | `cmd.SetGlobalMatrix` — per-camera |
+| `ScreenSize` | `cmd.SetGlobalVector` — per-camera |
+| `useScreenSpace = 0` | `cmd.SetGlobalInt` — constant, vẫn set mỗi draw vì cost negligible |
+| `InstanceOffset = 0` | `cmd.SetGlobalInt` — constant |
 
 ### 2.4 GraphicsBuffer thay vì ComputeBuffer
 
 | | `ComputeBuffer` | `GraphicsBuffer` |
 |---|---|---|
-| Zero-copy API | `BeginWrite` — cần `SubUpdates` mode, lịch sử chỉ ổn định trên Vulkan | `LockBufferForWrite` — native support, ổn định cross-platform |
-| Memory placement | Default: GPU VRAM (cần staging copy) | Với `LockBufferForWrite`: GPU-visible CPU memory (D3D12 Upload Heap) — CPU ghi nhanh |
-| Unity 6 status | Legacy, vẫn hoạt động | Recommended API |
+| Unity 6 status | Legacy, vẫn hoạt động | **Recommended API** |
+| `SetData(NativeArray)` | Hỗ trợ | Hỗ trợ |
+| Indirect args | Cần `ComputeBufferType.IndirectArguments` | `GraphicsBuffer.Target.IndirectArguments` |
+| Structured data | `ComputeBufferType.Structured` | `GraphicsBuffer.Target.Structured` |
 
-`ComputeBuffer.BeginWrite` yêu cầu `ComputeBufferMode.SubUpdates` — mode này từng chỉ hoạt động đáng tin cậy trên Vulkan. `GraphicsBuffer.LockBufferForWrite` là API native của Unity 6, không cần mode đặc biệt.
+`GraphicsBuffer` là API hiện tại của Unity 6, hỗ trợ tất cả các use case của `ComputeBuffer` với API nhất quán hơn.
 
 ### 2.5 Color packing tại Start() thay vì Update()
 
@@ -254,17 +281,32 @@ Static bridge phù hợp vì drawer không cần Inspector config, không cần 
 
 RenderGraph API (`AddUnsafePass<T>`) yêu cầu `T` là **class** — RenderGraph pool instances nội bộ, gán giá trị qua `out` parameter. Struct sẽ bị copy, mất reference.
 
-PassData chứa `IInstanceDrawer drawer` + `Camera camera` — reference types. RenderGraph pool PassData sau frame đầu tiên → **zero heap allocation** từ frame thứ 2 trở đi.
+PassData chứa `IInstanceDrawer drawer` + `Camera camera` + `TextureHandle colorTarget` + `TextureHandle depthTarget`. RenderGraph pool PassData sau frame đầu tiên → **zero heap allocation** từ frame thứ 2 trở đi.
 
 Static lambda `static (PassData data, UnsafeGraphContext context) => { ... }` tránh closure capture → zero GC pressure.
 
 ### 2.9 Lazy material init
 
-`Shader.Find()` có thể trả `null` nếu gọi trước khi Unity import shader xong. Xảy ra khi:
-- Domain reload (Enter Play Mode)
-- URP gọi `Feature.Create()` trước shader compilation
+`Resources.Load<Shader>()` thay vì `Shader.Find()`. Shader nằm trong `Resources/` folder → Unity include nó trong build thông qua Resources system.
 
-`EnsureMaterial()` retry mỗi frame. Khi shader sẵn sàng → tạo material + set constants 1 lần. Các frame tiếp chỉ check `material != null` → return true (1 branch, near-zero cost).
+> **Tại sao không dùng `Shader.Find()`?** `Shader.Find()` chỉ tìm shader đã compiled **và included** trong build. Shader phải được reference bởi material asset hoặc nằm trong Always Included Shaders. Hệ thống này tạo material **runtime** (`new Material(shader)`) — không có material asset nào reference shader → `Shader.Find()` trả `null` trên build, `EnsureMaterial()` fail im lặng, particles invisible. `Resources.Load<Shader>("ParticleDraw")` load trực tiếp bằng path → guaranteed bởi Resources inclusion.
+
+`EnsureMaterial()` retry mỗi frame. Khi shader sẵn sàng → tạo material. Các frame tiếp chỉ check `material != null` → return true (1 branch, near-zero cost).
+
+### 2.10 Android APK Build — 6 fixes
+
+Hệ thống ban đầu hoạt động trên Editor (D3D11) nhưng **không vẽ gì** trên Android APK (Vulkan + RenderGraph). Nguyên nhân: 6 vấn đề kết hợp, mỗi cái đều bị D3D11 Editor che giấu.
+
+| # | Vấn đề | Tại sao lỗi trên Vulkan/Android | Fix |
+|---|--------|--------------------------------|-----|
+| 1 | **`CGPROGRAM` + `UnityCG.cginc`** — Built-in RP shader syntax | URP shader stripper (`m_StripUnusedVariants: 1`) strip shader không thuộc URP. D3D11 Editor có backward compatibility layer. | `HLSLPROGRAM` + `Core.hlsl` + `"RenderPipeline"="UniversalPipeline"` tag |
+| 2 | **`Shader.Find()` trả null** — shader không referenced bởi material asset | Resources folder include asset nhưng `Shader.Find` cần shader compiled + registered. Build có thể không register. | `Resources.Load<Shader>()` — load trực tiếp bằng path |
+| 3 | **Loose shader globals** — uniforms không nằm trong CBUFFER | D3D11 tự gom loose globals vào `$Globals` CBUFFER. Vulkan SPIR-V compiler không có cơ chế tương đương → binding sai. | `CBUFFER_START(ParticleUniforms)` explicit |
+| 4 | **`material.Set*()`** — immediate mode trong RenderGraph context | D3D11 auto-sync material state. Vulkan descriptor set caching → material changes chưa visible khi CommandBuffer execute. | `cmd.SetGlobal*()` — ghi vào command stream |
+| 5 | **Không `SetRenderTarget`** — `AddUnsafePass` không auto-bind | D3D11 Editor inherit render target từ previous pass. `AddUnsafePass` trên Vulkan bắt đầu với unbound targets. | Explicit `context.cmd.SetRenderTarget(color, depth)` |
+| 6 | **`LockBufferForWrite`** — Mali cache coherence | D3D12 Upload Heap trên desktop flush correctly. Mali Valhall driver không flush CPU cache → GPU đọc stale data. | `SetData(NativeArray)` — driver xử lý cache coherence |
+
+**Bài học chung:** D3D11 trên Editor rất "tha thứ" — tự sync, tự bind, tự gom. Vulkan trên mobile yêu cầu **explicit** ở mọi bước. Test trên device thật là bắt buộc.
 
 ---
 
@@ -295,20 +337,21 @@ Render pass không biết `ParticleDrawer` tồn tại — chỉ thấy `IInstan
 ```
 Update()                                    Render (per camera)
 ────────────────────────────────────        ────────────────────────
-                                            
+
 BeginFrame(count)                           Draw(cmd, cam)
   │  frameDataReady = false                   │  skip if !frameDataReady
-  │  recover orphaned lock                    │  set ScreenSize (if changed)
-  │  swap writeIndex                          │  set VP matrix (per-camera)
-  │  ensure buffer capacity                   └─ DrawMeshInstancedIndirect
-  └─ LockBufferForWrite → NativeArray       
-                                            
-nativeArray[i] = { center, radius, color }  ← zero-copy, GPU staging memory
-                                            
-EndFrame(count)                             
-  │  UnlockBufferAfterWrite                 
-  │  update argsBuffer (if count changed)   
-  └─ rebind buffer to material              
+  │  swap writeIndex                          │  cmd.SetGlobalBuffer (instance data)
+  │  ensure GPU buffer capacity               │  cmd.SetGlobalVector (screen size)
+  │  ensure CPU staging capacity              │  cmd.SetGlobalMatrix (VP matrix)
+  └─ return cpuStaging NativeArray            │  cmd.SetGlobalInt (constants)
+                                              └─ DrawMeshInstancedIndirect
+nativeArray[i] = { center, radius, color }
+                  ← CPU staging, persistent
+
+EndFrame(count)
+  │  SetData(nativeArray → GPU buffer)
+  │  update argsBuffer (if count changed)
+  └─ frameDataReady = true
 ```
 
 ### 3.3 Struct Layout (C# ↔ Shader)
@@ -330,14 +373,16 @@ Thứ tự trường **phải khớp byte-by-byte**. `StructLayout.Sequential` n
 
 | Guard | Chống | Cơ chế |
 |-------|-------|--------|
-| `isBufferLocked` | Exception giữa Begin/EndFrame → buffer locked vĩnh viễn | BeginFrame tự unlock buffer cũ |
-| `lockedBuffer.IsValid()` | Buffer invalidate (hot reload, device lost) | Check trước unlock |
-| `!isBufferLocked` early return | EndFrame gọi mà không có BeginFrame | Skip unlock |
+| `!EnsureMaterial()` early return | Shader chưa load (domain reload, Resources missing) | BeginFrame trả `default` NativeArray → sim skip |
+| `count == 0` in BeginFrame | Sim gọi BeginFrame với 0 particles | Trả `default` → không tạo buffer thừa |
 | `frameDataReady = false` | Simulation destroy → Draw vẽ stale data | Reset mỗi BeginFrame |
-| `lastUploadFrame` | BeginFrame gọi 2 lần cùng frame | Guard Time.frameCount |
-| Dispose unlock | Buffer locked khi feature bị destroy | Unlock trước Release |
+| `lastUploadFrame` | BeginFrame gọi 2 lần cùng frame | Guard `Time.frameCount` |
+| `cpuStaging` grow-only | Count dao động → liên tục alloc/dealloc | Chỉ grow, không shrink |
+| `count == 0` in EndFrame | EndFrame gọi với 0 particles | Skip SetData |
+| `!frameDataReady \|\| count == 0` in Draw | Không có data hoặc 0 particles | Skip draw call |
 | `renderPass != null` | Feature error → null pass | Guard trong AddRenderPasses |
 | ReleaseResources in Create() | URP gọi Create() nhiều lần → leak | Release trước tạo mới |
+| `buffer.IsValid()` | Buffer invalidate (hot reload, device lost) | Check trước Release/Recreate |
 
 ---
 
@@ -347,14 +392,14 @@ Thứ tự trường **phải khớp byte-by-byte**. `StructLayout.Sequential` n
 ParticleRendering/
 ├─ ParticleRendering.md                ← tài liệu này
 ├─ Resources/
-│   ├─ ParticleDraw.shader             ← SDF circle + color unpack + fwidth AA
-│   └─ SpaceTransformHelper.hlsl       ← world/screen-space coordinate transform
+│   ├─ ParticleDraw.shader             ← HLSL: SDF circle + color unpack + fwidth AA
+│   └─ SpaceTransformHelper.hlsl       ← CBUFFER uniforms + world/screen-space transform
 └─ Scripts/
     ├─ IInstanceWriter.cs              ← interface: BeginFrame / EndFrame
     ├─ IInstanceDrawer.cs              ← interface: Draw
     ├─ ParticleRenderData.cs           ← 16B struct (center + radius + packedColor)
-    ├─ QuadMeshHelper.cs               ← quad mesh factory (4 vertices, 2 triangles)
-    ├─ ParticleDrawer.cs               ← core: double-buffered GPU + material + draw
+    ├─ QuadMeshHelper.cs               ← quad mesh factory (4 vertices, GPU-only)
+    ├─ ParticleDrawer.cs               ← core: double-buffered GPU + lazy material + draw
     ├─ ParticleProvider.cs             ← static bridge (Writer/Drawer via interface)
     ├─ ParticleRendererFeature.cs      ← URP feature (composition root)
     ├─ ParticleRenderPass.cs           ← URP pass (RenderGraph + Legacy)
@@ -363,11 +408,11 @@ ParticleRendering/
 
 | File | Vai trò |
 |------|---------|
-| `ParticleDrawer` | Quản lý 2 GraphicsBuffer luân phiên, lazy material, grow-only args buffer, phát draw call. Implement cả IInstanceWriter lẫn IInstanceDrawer |
+| `ParticleDrawer` | Quản lý 2 GraphicsBuffer luân phiên, CPU staging NativeArray, lazy material, grow-only args buffer, phát draw call qua `cmd.SetGlobal*()`. Implement cả IInstanceWriter lẫn IInstanceDrawer |
 | `ParticleProvider` | Static bridge — giữ concrete drawer nội bộ, expose Writer/Drawer qua interface. Writer và drawer phải share cùng buffer lifecycle nên phải là 1 object |
 | `ParticleRendererFeature` | Composition root — tạo drawer + pass, đăng ký provider, release khi dispose. Gọi ReleaseResources() trong Create() vì URP gọi Create() nhiều lần |
-| `ParticleRenderPass` | Hỗ trợ RenderGraph (AddUnsafePass, PassData pooled, static lambda) + Legacy (CommandBufferPool). Chỉ gọi `drawer.Draw()` — không upload data |
-| `ParticleDebugSim` | Pre-allocate arrays + pre-pack colors trong Start(). Update ghi thẳng NativeArray từ LockBufferForWrite |
+| `ParticleRenderPass` | RenderGraph: AddUnsafePass + explicit SetRenderTarget + PassData pooled + static lambda. Legacy: CommandBufferPool. Chỉ gọi `drawer.Draw()` — không upload data |
+| `ParticleDebugSim` | Pre-allocate arrays + pre-pack colors trong Start(). Update ghi vào CPU staging NativeArray, EndFrame upload qua SetData |
 
 ---
 
@@ -377,12 +422,12 @@ ParticleRendering/
 |---|----------|------|-----------------|
 | 1 | Play với ParticleDebugSim | Circles hiện | Camera, ZTest, shader error |
 | 2 | Frame Debugger | 1 draw call "ParticleRendering" | Buffer/args sai |
-| 3 | 10,000+ particles | > 60 FPS | Profiler → LockBufferForWrite |
+| 3 | 10,000+ particles | > 60 FPS | Profiler → SetData |
 | 4 | Zoom gần 1 circle | Biên mượt | AA padding (radius × 0.1) |
 | 5 | Game + Scene view cùng lúc | Cả 2 đúng | VP matrix per-camera |
 | 6 | Enter/Exit Play 3 lần | Không error, memory ổn | ReleaseResources leak |
 | 7 | Profiler → GC Alloc | 0 trong render path | Managed allocation |
-| 8 | Console | Không warning LockBufferForWrite | Double buffering |
+| 8 | **Build APK → test trên device** | Circles hiện | adb logcat -s Unity |
 
 ---
 
@@ -392,7 +437,7 @@ ParticleRendering/
 |---------|-----------|----------|
 | A | Color gradient theo velocity | Thêm velocity vào struct, shader lerp màu |
 | B | Depth occlusion | `ZTest LEqual` — particles bị geometry che |
-| C | Compute shader simulation | GPU-only pipeline, bỏ LockBufferForWrite |
+| C | Compute shader simulation | GPU-only pipeline, bỏ CPU staging + SetData |
 | D | Rectangular masking | maskMin/maskMax trong struct + shader clip |
 | E | Multi-shape | Type field + SDF cho quad/line/triangle |
 
@@ -402,10 +447,13 @@ ParticleRendering/
 
 | Metric | Giá trị |
 |--------|---------|
-| Copies per particle per frame | **0** |
+| Copies per particle per frame | **1** (NativeArray → SetData → GPU) |
 | Bytes per particle | **16** (power-of-2) |
 | Draw calls | **1** per camera |
 | Bandwidth (10K particles) | **160 KB/frame** |
 | GC alloc in render path | **0** |
 | Buffers | Double-buffered, grow-only |
+| CPU staging | NativeArray (persistent, grow-only) |
+| Uniform binding | `cmd.SetGlobal*()` (command stream) |
 | AA | `fwidth()` + `smoothstep()` |
+| Shader | HLSL + URP Core.hlsl + CBUFFER |
