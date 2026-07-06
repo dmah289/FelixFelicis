@@ -552,14 +552,28 @@ MonoBehaviour:
   m_GameObject: {fileID: 1882198679}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8084c0fdf90d40444afd1aafa0535353, type: 3}
+  m_Script: {fileID: 11500000, guid: f96e1ea3fd3aba04c9e975df04440b86, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: com.FelixFelicis::FelixFelicis.ParticleRendering.ParticleDebugSim
-  particleCount: 20000
+  m_EditorClassIdentifier: com.FelixFelicis::FelixFelicis.ParticleRendering.Simulation.FallingSandSim
+  mode: 1
+  maxParticles: 10000
   spawnRange: 2
-  radiusMin: 0.02
-  radiusMax: 0.02
-  driftSpeed: 0.1
+  streamRate: 500
+  streamSpawnWidth: 2
+  radiusMin: 0.01
+  radiusMax: 0.01
+  gravity: {x: 0, y: -20}
+  airDrag: 0.01
+  frictionCoef: 0.6
+  contactDamping: 0.3
+  wallFriction: 0.5
+  substeps: 3
+  collisionIterations: 4
+  sleepVelocityThreshold: 0.01
+  sleepFrames: 30
+  wakeOverlapFraction: 0.3
+  wakeSpeed: 0.5
+  maxPhysicsMs: 8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
