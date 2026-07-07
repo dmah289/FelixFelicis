@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using Unity.Mathematics;
 
 namespace FelixFelicis.ParticleRendering.Simulation
 {
@@ -45,13 +46,16 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         /// <summary>
         /// Ensures particle-indexed arrays can hold <paramref name="count"/> entries.
+        /// Grows by doubling to amortize allocation cost during streaming spawn.
         /// Disposes old arrays and reallocates if needed. Called before Build.
         /// </summary>
         public void EnsureCapacity(int count)
         {
             if (count <= capacity) return;
 
-            capacity = count;
+            // Double capacity to amortize reallocations in stream mode
+            // (e.g. 500 particles/s → ~14 doublings vs ~20 exact-size resizes).
+            capacity = math.max(count, capacity * 2);
             sortedIndices.Dispose();
             particleCells.Dispose();
             sortedIndices = new NativeArray<int>(capacity, Allocator.Persistent);

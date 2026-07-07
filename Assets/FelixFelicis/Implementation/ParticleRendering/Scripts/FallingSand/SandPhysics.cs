@@ -12,9 +12,21 @@ namespace FelixFelicis.ParticleRendering.Simulation
     /// Slope behavior: height-biased position correction + slope-dependent friction
     /// produce natural gentle sand dunes (~20-25° angle of repose).
     /// </para>
+    /// <para>
+    /// All physics jobs use <c>FloatMode.Fast</c> — allows Burst to reorder float
+    /// operations and use approximate intrinsics (e.g. <c>rsqrt</c>). Acceptable for
+    /// game physics where exact IEEE 754 compliance is not required.
+    /// </para>
     /// </summary>
     public static class SandPhysics
     {
+        /// <summary>
+        /// Minimum squared tangent velocity to apply friction correction.
+        /// Below this threshold, the friction force is negligible and the <c>1/tLen</c>
+        /// division approaches instability. Value: 1% of max friction force squared.
+        /// </summary>
+        private const float FrictionDeadZoneFraction = 0.01f;
+
         // ── BuildActiveIndicesJob ─────────────────────────────────────
 
         /// <summary>
@@ -22,18 +34,18 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// into <see cref="activeIndices"/>. Writes awake count to <see cref="awakeCount"/>.
         /// O(n) scan with excellent cache behavior (64 bools per cache line).
         /// </summary>
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct BuildActiveIndicesJob : IJob
         {
             [ReadOnly] public NativeArray<bool> isSleeping;
-            public int count;
+            public int particleCount;
             [WriteOnly] public NativeArray<int> activeIndices;
             public NativeReference<int> awakeCount;
 
             public void Execute()
             {
                 int awake = 0;
-                for (int i = 0; i < count; i++)
+                for (int i = 0; i < particleCount; i++)
                 {
                     if (!isSleeping[i])
                         activeIndices[awake++] = i;
@@ -44,7 +56,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         // ── SnapshotFrameStartJob ─────────────────────────────────────
 
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct SnapshotFrameStartJob : IJob
         {
             public NativeArray<SandParticle> particles;
@@ -65,15 +77,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         // ── IntegrateJob ──────────────────────────────────────────────
 
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct IntegrateJob : IJob
         {
             public NativeArray<SandParticle> particles;
             [ReadOnly] public NativeArray<int> activeIndices;
             public int awakeCount;
-            public float gx;
-            public float gy;
-            public float dragMul;
+            public float gravityDtSqX;
+            public float gravityDtSqY;
+            public float dragMultiplier;
 
             public void Execute()
             {
@@ -82,12 +94,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     int i = activeIndices[a];
                     var p = particles[i];
 
-                    float vx = (p.pos.x - p.prevPos.x) * dragMul;
-                    float vy = (p.pos.y - p.prevPos.y) * dragMul;
+                    float vx = (p.pos.x - p.prevPos.x) * dragMultiplier;
+                    float vy = (p.pos.y - p.prevPos.y) * dragMultiplier;
 
                     p.prevPos = p.pos;
-                    p.pos.x += vx + gx;
-                    p.pos.y += vy + gy;
+                    p.pos.x += vx + gravityDtSqX;
+                    p.pos.y += vy + gravityDtSqY;
 
                     particles[i] = p;
                 }
@@ -100,11 +112,11 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// 3-pass O(n) counting sort. Replaces <c>SpatialHash2D.Build()</c>.
         /// Pass 1 caches cell index per particle to avoid recomputing in pass 3.
         /// </summary>
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct SpatialHashBuildJob : IJob
         {
             [ReadOnly] public NativeArray<SandParticle> particles;
-            public int count;
+            public int particleCount;
 
             // Grid parameters (copied from SpatialHash2D)
             public float invCellSize;
@@ -133,7 +145,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 for (int i = 0; i < cellCount; i++)
                     cellCounts[i] = 0;
 
-                for (int i = 0; i < count; i++)
+                for (int i = 0; i < particleCount; i++)
                 {
                     int cx = (int)((particles[i].pos.x - ox) * inv);
                     if (cx < 0) cx = 0; else if (cx > gwM1) cx = gwM1;
@@ -150,7 +162,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     cellOffsets[i] = cellOffsets[i - 1] + cellCounts[i - 1];
 
                 // Pass 3: scatter using cached cell indices
-                for (int i = 0; i < count; i++)
+                for (int i = 0; i < particleCount; i++)
                 {
                     int cell = particleCells[i];
                     int newCount = cellCounts[cell] - 1;
@@ -161,7 +173,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 // Restore cellCounts from offsets
                 for (int i = 0; i < cellCount - 1; i++)
                     cellCounts[i] = cellOffsets[i + 1] - cellOffsets[i];
-                cellCounts[cellCount - 1] = count - cellOffsets[cellCount - 1];
+                cellCounts[cellCount - 1] = particleCount - cellOffsets[cellCount - 1];
             }
         }
 
@@ -176,7 +188,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// with activeIndices iteration.
         /// </para>
         /// </summary>
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct ResolveCollisionsJob : IJob
         {
             public NativeArray<SandParticle> particles;
@@ -256,110 +268,118 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                                     var pj = particles[j];
 
-                                    float ddx = pj.pos.x - px;
-                                    float ddy = pj.pos.y - py;
-                                    float distSqr = ddx * ddx + ddy * ddy;
+                                    float deltaX = pj.pos.x - px;
+                                    float deltaY = pj.pos.y - py;
+                                    float distSqr = deltaX * deltaX + deltaY * deltaY;
                                     float minDist = ri + pj.radius;
 
                                     if (distSqr >= minDist * minDist || distSqr < 1e-10f)
                                         continue;
 
                                     // ── INLINE SolveContact ──────────────
+                                    // Inlined because Burst IJob with ref struct params
+                                    // has significant call overhead even with [AggressiveInlining].
 
                                     float invDist = math.rsqrt(distSqr);
                                     float dist = distSqr * invDist;
                                     float overlap = minDist - dist;
-                                    float nnx = ddx * invDist;
-                                    float nny = ddy * invDist;
+                                    float normalX = deltaX * invDist;
+                                    float normalY = deltaY * invDist;
 
-                                    float verticalness = nny * nny;
+                                    // verticalness: 0 = horizontal contact, 1 = vertical contact.
+                                    // Squared instead of abs — branchless, smooth derivative at 0.
+                                    float verticalness = normalY * normalY;
 
-                                    // Wake check
+                                    // ── Phase 0: Wake sleeping particle if hit hard enough ──
                                     bool jSleeping = isSleeping[j];
                                     if (jSleeping)
                                     {
-                                        float wt = (ri < pj.radius ? ri : pj.radius) * wakeOverlapFraction;
-                                        float avx = pi.pos.x - pi.prevPos.x;
-                                        float avy = pi.pos.y - pi.prevPos.y;
+                                        float wakeThreshold = (ri < pj.radius ? ri : pj.radius) * wakeOverlapFraction;
+                                        float velIX = pi.pos.x - pi.prevPos.x;
+                                        float velIY = pi.pos.y - pi.prevPos.y;
 
-                                        if (overlap > wt && avx * avx + avy * avy > wakeSpeedSqr)
+                                        if (overlap > wakeThreshold && velIX * velIX + velIY * velIY > wakeSpeedSqr)
                                         {
                                             jSleeping = false;
                                             isSleeping[j] = false;
                                             sleepCounters[j] = 0;
-                                            pj.prevPos = pj.pos;
+                                            pj.prevPos = pj.pos; // zero velocity on wake
                                             wakeOccurred.Value = true;
                                         }
                                     }
 
-                                    // Position correction
+                                    // ── Phase 1: Position correction (resolve overlap) ──
+                                    // Sleeping j is immovable — i absorbs full correction.
+                                    // Both active — height-biased split for natural slope formation.
                                     if (jSleeping)
                                     {
-                                        pi.pos.x -= nnx * overlap;
-                                        pi.pos.y -= nny * overlap;
+                                        pi.pos.x -= normalX * overlap;
+                                        pi.pos.y -= normalY * overlap;
                                     }
                                     else
                                     {
                                         float bias = pi.pos.y > pj.pos.y
-                                            ? 0.5f + slopeBias
-                                            : 0.5f - slopeBias;
+                                            ? 0.5f + slopeBias    // i is above → receives more push
+                                            : 0.5f - slopeBias;   // i is below → receives less push
                                         float pushI = overlap * bias;
                                         float pushJ = overlap - pushI;
 
-                                        pi.pos.x -= nnx * pushI;
-                                        pi.pos.y -= nny * pushI;
-                                        pj.pos.x += nnx * pushJ;
-                                        pj.pos.y += nny * pushJ;
+                                        pi.pos.x -= normalX * pushI;
+                                        pi.pos.y -= normalY * pushI;
+                                        pj.pos.x += normalX * pushJ;
+                                        pj.pos.y += normalY * pushJ;
                                     }
 
-                                    // Coulomb friction
+                                    // ── Phase 2: Coulomb friction (tangential) ──
+                                    // Vertical contacts slide easier → natural angle of repose.
                                     float effFriction = frictionCoef * (1f - verticalness * slopeFrictionReduction);
 
-                                    float relVx = (pi.pos.x - pi.prevPos.x) - (pj.pos.x - pj.prevPos.x);
-                                    float relVy = (pi.pos.y - pi.prevPos.y) - (pj.pos.y - pj.prevPos.y);
-                                    float relDotN = relVx * nnx + relVy * nny;
-                                    float ttx = relVx - relDotN * nnx;
-                                    float tty = relVy - relDotN * nny;
-                                    float tLenSqr = ttx * ttx + tty * tty;
+                                    float relVelX = (pi.pos.x - pi.prevPos.x) - (pj.pos.x - pj.prevPos.x);
+                                    float relVelY = (pi.pos.y - pi.prevPos.y) - (pj.pos.y - pj.prevPos.y);
+                                    float relDotNormal = relVelX * normalX + relVelY * normalY;
+                                    float tangentX = relVelX - relDotNormal * normalX;
+                                    float tangentY = relVelY - relDotNormal * normalY;
+                                    float tangentLenSqr = tangentX * tangentX + tangentY * tangentY;
 
-                                    float maxF = effFriction * overlap;
-                                    if (tLenSqr > maxF * maxF * 0.01f)
+                                    float maxFriction = effFriction * overlap;
+                                    if (tangentLenSqr > maxFriction * maxFriction * FrictionDeadZoneFraction)
                                     {
-                                        float tLen = math.sqrt(tLenSqr);
-                                        float corr = tLen < maxF ? tLen : maxF;
-                                        float invT = 1f / tLen;
-                                        float tdx = ttx * invT;
-                                        float tdy = tty * invT;
+                                        float tangentLen = math.sqrt(tangentLenSqr);
+                                        float correction = tangentLen < maxFriction ? tangentLen : maxFriction;
+                                        float invTangentLen = 1f / tangentLen;
+                                        float tangentDirX = tangentX * invTangentLen;
+                                        float tangentDirY = tangentY * invTangentLen;
 
                                         if (jSleeping)
                                         {
-                                            pi.pos.x -= tdx * corr;
-                                            pi.pos.y -= tdy * corr;
+                                            pi.pos.x -= tangentDirX * correction;
+                                            pi.pos.y -= tangentDirY * correction;
                                         }
                                         else
                                         {
-                                            float hc = corr * 0.5f;
-                                            pi.pos.x -= tdx * hc;
-                                            pi.pos.y -= tdy * hc;
-                                            pj.pos.x += tdx * hc;
-                                            pj.pos.y += tdy * hc;
+                                            float halfCorrection = correction * 0.5f;
+                                            pi.pos.x -= tangentDirX * halfCorrection;
+                                            pi.pos.y -= tangentDirY * halfCorrection;
+                                            pj.pos.x += tangentDirX * halfCorrection;
+                                            pj.pos.y += tangentDirY * halfCorrection;
                                         }
                                     }
 
-                                    // Contact damping
+                                    // ── Phase 3: Contact damping (reduce bounce via prevPos) ──
+                                    // Modifies prevPos so implicit velocity (pos - prevPos) decreases
+                                    // along the contact normal. Only for active-active pairs.
                                     if (!jSleeping)
                                     {
-                                        float dh = relDotN * contactDamping * 0.5f;
-                                        pi.prevPos.x += nnx * dh;
-                                        pi.prevPos.y += nny * dh;
-                                        pj.prevPos.x -= nnx * dh;
-                                        pj.prevPos.y -= nny * dh;
+                                        float dampingHalf = relDotNormal * contactDamping * 0.5f;
+                                        pi.prevPos.x += normalX * dampingHalf;
+                                        pi.prevPos.y += normalY * dampingHalf;
+                                        pj.prevPos.x -= normalX * dampingHalf;
+                                        pj.prevPos.y -= normalY * dampingHalf;
                                     }
 
-                                    // Write back j
                                     particles[j] = pj;
 
-                                    // Re-cache pos after correction
+                                    // Re-cache pos for accurate distance checks on next neighbor
                                     px = pi.pos.x;
                                     py = pi.pos.y;
 
@@ -377,7 +397,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         // ── ResolveBoundariesJob ──────────────────────────────────────
 
-        [BurstCompile]
+        [BurstCompile(FloatMode = FloatMode.Fast)]
         public struct ResolveBoundariesJob : IJob
         {
             public NativeArray<SandParticle> particles;
@@ -398,22 +418,22 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     var p = particles[i];
                     float r = p.radius;
 
-                    // Floor
+                    // Floor — clamp + kill normal velocity + tangential friction
                     float floorY = negBY + r;
                     if (p.pos.y < floorY)
                     {
-                        float pen = floorY - p.pos.y;
-                        float hVel = p.pos.x - p.prevPos.x;
-                        float maxF = wallFriction * pen;
-                        if (hVel > maxF) p.prevPos.x += maxF;
-                        else if (hVel < -maxF) p.prevPos.x -= maxF;
-                        else p.prevPos.x += hVel;
+                        float penetration = floorY - p.pos.y;
+                        float tangentVel = p.pos.x - p.prevPos.x;
+                        float maxFriction = wallFriction * penetration;
+                        if (tangentVel > maxFriction) p.prevPos.x += maxFriction;
+                        else if (tangentVel < -maxFriction) p.prevPos.x -= maxFriction;
+                        else p.prevPos.x += tangentVel;
 
                         p.pos.y = floorY;
                         p.prevPos.y = floorY;
                     }
 
-                    // Ceiling
+                    // Ceiling — clamp only (no friction: particles fall away naturally)
                     float ceilY = boundsY - r;
                     if (p.pos.y > ceilY)
                     {
@@ -421,31 +441,31 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         p.prevPos.y = ceilY;
                     }
 
-                    // Left wall
+                    // Left wall — clamp + kill normal velocity + tangential friction
                     float leftX = negBX + r;
                     if (p.pos.x < leftX)
                     {
-                        float pen = leftX - p.pos.x;
-                        float vVel = p.pos.y - p.prevPos.y;
-                        float maxF = wallFriction * pen;
-                        if (vVel > maxF) p.prevPos.y += maxF;
-                        else if (vVel < -maxF) p.prevPos.y -= maxF;
-                        else p.prevPos.y += vVel;
+                        float penetration = leftX - p.pos.x;
+                        float tangentVel = p.pos.y - p.prevPos.y;
+                        float maxFriction = wallFriction * penetration;
+                        if (tangentVel > maxFriction) p.prevPos.y += maxFriction;
+                        else if (tangentVel < -maxFriction) p.prevPos.y -= maxFriction;
+                        else p.prevPos.y += tangentVel;
 
                         p.pos.x = leftX;
                         p.prevPos.x = leftX;
                     }
 
-                    // Right wall
+                    // Right wall — clamp + kill normal velocity + tangential friction
                     float rightX = boundsX - r;
                     if (p.pos.x > rightX)
                     {
-                        float pen = p.pos.x - rightX;
-                        float vVel = p.pos.y - p.prevPos.y;
-                        float maxF = wallFriction * pen;
-                        if (vVel > maxF) p.prevPos.y += maxF;
-                        else if (vVel < -maxF) p.prevPos.y -= maxF;
-                        else p.prevPos.y += vVel;
+                        float penetration = p.pos.x - rightX;
+                        float tangentVel = p.pos.y - p.prevPos.y;
+                        float maxFriction = wallFriction * penetration;
+                        if (tangentVel > maxFriction) p.prevPos.y += maxFriction;
+                        else if (tangentVel < -maxFriction) p.prevPos.y -= maxFriction;
+                        else p.prevPos.y += tangentVel;
 
                         p.pos.x = rightX;
                         p.prevPos.x = rightX;
@@ -479,7 +499,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                 if (dx * dx + dy * dy < sleepThresholdSqr)
                 {
-                    byte counter = (byte)(sleepCounters[i] + 1);
+                    // Saturate at 255 to prevent byte overflow when sleepFrames is large.
+                    // sleepFrames is clamped to [1, 255] at the orchestrator level.
+                    int raw = sleepCounters[i] + 1;
+                    byte counter = raw < 255 ? (byte)raw : (byte)255;
                     sleepCounters[i] = counter;
                     if (counter >= sleepFrames)
                     {

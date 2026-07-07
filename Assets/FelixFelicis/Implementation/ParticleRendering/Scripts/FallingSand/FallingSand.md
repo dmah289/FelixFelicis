@@ -309,7 +309,7 @@ Budget `maxPhysicsMs = 6ms` → degrade gracefully (ít substeps) thay vì frame
 | Kỹ thuật | Lý do |
 |----------|-------|
 | `NativeArray<T>` thay managed arrays | Burst bỏ bounds check, contiguous memory guaranteed |
-| `[BurstCompile] IJob` cho 6 physics methods | Auto-SIMD, inline, no GC, ~2-4× nhanh hơn Mono |
+| `[BurstCompile(FloatMode.Fast)] IJob` cho 6 physics + 1 render copy job | Auto-SIMD, inline, no GC, fast float reorder, ~2-4× nhanh hơn Mono |
 | `math.rsqrt()` thay FastInvSqrt | SSE `rsqrtss` instruction, nhanh hơn Quake trick trong Burst |
 | Collision outer O(awake) thay O(n) | `activeIndices[]` iteration, pair rule `j==i ∥ (!sleeping[j] && j<i)` |
 | `UpdateSleep` giữ managed | 1 lần/frame, O(awake), cần kết quả ngay cho `needsRenderUpload` |
@@ -344,7 +344,7 @@ Start()
 FixedUpdate()                              LateUpdate()
 ─────────────────────────────────          ─────────────────────────────
   if Stream: StreamSpawn()                   if !needsRenderUpload: return
-  if activeCount == 0: return                upload ALL particles to GPU
+  if spawnedCount == 0: return                upload ALL particles to GPU (Burst job)
   awakeCount = BuildActiveIndices()            (sleeping still visible)
   if awakeCount == 0: return    ◄─ early exit
   needsRenderUpload = true

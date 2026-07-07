@@ -1,3 +1,4 @@
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -50,7 +51,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         [Header("Sleep")]
         [SerializeField] private float sleepVelocityThreshold = 0.02f;
-        [SerializeField] private int sleepFrames = 10;
+        [SerializeField, Range(1, 255)] private int sleepFrames = 10;
         [SerializeField] private float wakeOverlapFraction = 0.4f;
         [SerializeField] private float wakeSpeed = 0.8f;
 
@@ -66,7 +67,8 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private NativeReference<int> awakeCountRef;
         private NativeReference<bool> wakeOccurredRef;
 
-        private int activeCount;
+        /// <summary>Total particles spawned (including sleeping). Only increases.</summary>
+        private int spawnedCount;
         private int awakeCount;
         private float streamAccumulator;
         private SpatialHash2D spatialHash;
@@ -86,7 +88,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
             activeIndices = new NativeArray<int>(maxParticles, Allocator.Persistent);
             awakeCountRef = new NativeReference<int>(Allocator.Persistent);
             wakeOccurredRef = new NativeReference<bool>(Allocator.Persistent);
-            activeCount = 0;
+            spawnedCount = 0;
 
             float cellSize = radiusMax * 2.5f;
             float margin = cellSize;
@@ -95,6 +97,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 -spawnRange - margin, spawnRange + margin,
                 -spawnRange - margin, spawnRange + margin,
                 maxParticles);
+
+            // Runtime clamp — Inspector Range only constrains UI, not code/SO writes.
+            substeps = Mathf.Clamp(substeps, 1, 4);
+            sleepFrames = Mathf.Clamp(sleepFrames, 1, 255);
 
             sleepThresholdSqr = sleepVelocityThreshold * sleepVelocityThreshold;
             wakeSpeedSqr = wakeSpeed * wakeSpeed;
@@ -108,13 +114,13 @@ namespace FelixFelicis.ParticleRendering.Simulation
             if (mode == SpawnMode.Stream)
                 StreamSpawn();
 
-            if (activeCount == 0) return;
+            if (spawnedCount == 0) return;
 
             // Build active indices (Burst job)
             new SandPhysics.BuildActiveIndicesJob
             {
                 isSleeping = isSleeping,
-                count = activeCount,
+                particleCount = spawnedCount,
                 activeIndices = activeIndices,
                 awakeCount = awakeCountRef,
             }.Schedule().Complete();
@@ -127,9 +133,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             float subDt = Time.fixedDeltaTime / substeps;
             float dtSqr = subDt * subDt;
-            float dragMul = 1f - airDrag;
-            float gx = gravity.x * dtSqr;
-            float gy = gravity.y * dtSqr;
+            float dragMultiplier = 1f - airDrag;
+            float gravityDtSqX = gravity.x * dtSqr;
+            float gravityDtSqY = gravity.y * dtSqr;
             long budgetTicks = (long)(maxPhysicsMs * System.Diagnostics.Stopwatch.Frequency / 1000);
 
             // Snapshot frame start positions (Burst job)
@@ -151,17 +157,18 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     particles = particles,
                     activeIndices = activeIndices,
                     awakeCount = awakeCount,
-                    gx = gx,
-                    gy = gy,
-                    dragMul = dragMul,
+                    gravityDtSqX = gravityDtSqX,
+                    gravityDtSqY = gravityDtSqY,
+                    dragMultiplier = dragMultiplier,
                 }.Schedule().Complete();
 
-                // Spatial hash build (Burst job)
-                spatialHash.EnsureCapacity(activeCount);
+                // Spatial hash build (Burst job) — hashes ALL spawned particles
+                // (including sleeping) so awake particles can collide with them.
+                spatialHash.EnsureCapacity(spawnedCount);
                 new SandPhysics.SpatialHashBuildJob
                 {
                     particles = particles,
-                    count = activeCount,
+                    particleCount = spawnedCount,
                     invCellSize = spatialHash.invCellSize,
                     originX = spatialHash.originX,
                     originY = spatialHash.originY,
@@ -206,7 +213,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     new SandPhysics.BuildActiveIndicesJob
                     {
                         isSleeping = isSleeping,
-                        count = activeCount,
+                        particleCount = spawnedCount,
                         activeIndices = activeIndices,
                         awakeCount = awakeCountRef,
                     }.Schedule().Complete();
@@ -225,7 +232,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 }.Schedule().Complete();
             }
 
-            // Sleep update — managed, not a job
+            // Sleep update — managed, not a job.
+            // Kept managed because O(awake), runs once per frame, and
+            // the result (needsRenderUpload) is needed immediately.
             SandPhysics.UpdateSleep(
                 particles, activeIndices, awakeCount,
                 isSleeping, sleepCounters,
@@ -234,27 +243,54 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private void LateUpdate()
         {
-            if (activeCount == 0 || !needsRenderUpload) return;
+            if (spawnedCount == 0 || !needsRenderUpload) return;
             needsRenderUpload = false;
 
             var writer = ParticleProvider.Writer;
             if (writer == null) return;
 
-            var buffer = writer.BeginFrame(activeCount);
+            var buffer = writer.BeginFrame(spawnedCount);
             if (!buffer.IsCreated) return;
 
-            for (int i = 0; i < activeCount; i++)
+            // Burst job: copy SandParticle → ParticleRenderData (pos, radius, packedColor).
+            // Uploads ALL spawned particles including sleeping — they must still render.
+            new CopyToRenderDataJob
             {
-                var p = particles[i];
-                buffer[i] = new ParticleRenderData
-                {
-                    center = p.pos, // float2 → Vector2 implicit conversion
-                    radius = p.radius,
-                    packedColor = p.packedColor,
-                };
-            }
+                particles = particles,
+                renderData = buffer,
+                count = spawnedCount,
+            }.Schedule().Complete();
 
-            writer.EndFrame(activeCount);
+            writer.EndFrame(spawnedCount);
+        }
+
+        // ── Render upload job ─────────────────────────────────────────
+
+        /// <summary>
+        /// Burst-compiled copy from <see cref="SandParticle"/> (32B) to
+        /// <see cref="ParticleRenderData"/> (16B). Extracts only the fields
+        /// needed for GPU rendering: position, radius, and packed color.
+        /// </summary>
+        [BurstCompile(FloatMode = FloatMode.Fast)]
+        private struct CopyToRenderDataJob : IJob
+        {
+            [ReadOnly] public NativeArray<SandParticle> particles;
+            [WriteOnly] public NativeArray<ParticleRenderData> renderData;
+            public int count;
+
+            public void Execute()
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    var p = particles[i];
+                    renderData[i] = new ParticleRenderData
+                    {
+                        center = p.pos,
+                        radius = p.radius,
+                        packedColor = p.packedColor,
+                    };
+                }
+            }
         }
 
         // ── Spawning ──────────────────────────────────────────────────
@@ -267,11 +303,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private void StreamSpawn()
         {
-            if (activeCount >= maxParticles) return;
+            if (spawnedCount >= maxParticles) return;
 
             streamAccumulator += streamRate * Time.fixedDeltaTime;
-            int toSpawn = Mathf.Min((int)streamAccumulator, maxParticles - activeCount);
+            int toSpawn = Mathf.Min((int)streamAccumulator, maxParticles - spawnedCount);
+
+            // Subtract integer part only — prevents float precision drift
+            // from accumulating over long play sessions (hours on mobile).
             streamAccumulator -= toSpawn;
+            if (streamAccumulator > streamRate) streamAccumulator = 0f;
 
             float topY = spawnRange - radiusMax;
 
@@ -284,9 +324,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private void SpawnParticle(float2 position)
         {
-            if (activeCount >= maxParticles) return;
+            if (spawnedCount >= maxParticles) return;
 
-            particles[activeCount] = new SandParticle
+            particles[spawnedCount] = new SandParticle
             {
                 pos = position,
                 prevPos = position,
@@ -294,9 +334,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 radius = Random.Range(radiusMin, radiusMax),
                 packedColor = SandColors.GeneratePacked(),
             };
-            isSleeping[activeCount] = false;
-            sleepCounters[activeCount] = 0;
-            activeCount++;
+            isSleeping[spawnedCount] = false;
+            sleepCounters[spawnedCount] = 0;
+            spawnedCount++;
 
             needsRenderUpload = true;
         }
