@@ -556,9 +556,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: com.FelixFelicis::FelixFelicis.ParticleRendering.Simulation.FallingSandSim
   mode: 1
-  maxParticles: 30000
+  maxParticles: 100000
   spawnRange: 2
-  streamRate: 500
+  streamRate: 2000
   streamSpawnWidth: 2
   radiusMin: 0.01
   radiusMax: 0.01
@@ -566,7 +566,7 @@ MonoBehaviour:
   airDrag: 0.01
   frictionCoef: 0.6
   contactDamping: 0.3
-  wallFriction: 0.5
+  wallFriction: 0.3
   substeps: 3
   collisionIterations: 4
   slopeBias: 0.2
