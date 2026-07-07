@@ -304,6 +304,19 @@ Budget `maxPhysicsMs = 6ms` → degrade gracefully (ít substeps) thay vì frame
 
 ---
 
+### 2.7 Burst + NativeArray + IJob
+
+| Kỹ thuật | Lý do |
+|----------|-------|
+| `NativeArray<T>` thay managed arrays | Burst bỏ bounds check, contiguous memory guaranteed |
+| `[BurstCompile] IJob` cho 6 physics methods | Auto-SIMD, inline, no GC, ~2-4× nhanh hơn Mono |
+| `math.rsqrt()` thay FastInvSqrt | SSE `rsqrtss` instruction, nhanh hơn Quake trick trong Burst |
+| Collision outer O(awake) thay O(n) | `activeIndices[]` iteration, pair rule `j==i ∥ (!sleeping[j] && j<i)` |
+| `UpdateSleep` giữ managed | 1 lần/frame, O(awake), cần kết quả ngay cho `needsRenderUpload` |
+| `NativeReference<int/bool>` | awakeCount + wakeOccurred output từ Jobs, không cần managed callback |
+
+---
+
 ## 3. Thiết kế hệ thống
 
 ### 3.1 Dependency Graph
@@ -435,9 +448,11 @@ Simulation/
 | Metric | Giá trị |
 |--------|---------|
 | Struct size | 32B — 2/cache line, no straddling |
-| Sleep state | Parallel bool[]/byte[] — 64/cache line |
+| Sleep state | Parallel NativeArray bool/byte — 64/cache line |
 | Non-collision loops | O(awake) via activeIndices |
-| Collision outer skip | Compact bool[] — 1B per check |
+| Collision outer loop | O(awake) via activeIndices (not O(n)) |
+| Burst compilation | 6 IJob structs, auto-SIMD |
+| Math | math.rsqrt (SSE rsqrtss) |
 | Fully settled | FixedUpdate ≈ 0, LateUpdate ≈ 0 |
 | GC in hot path | 0 |
 | Render | 1 draw call, 1 memcpy (skipped when settled) |
