@@ -1,6 +1,8 @@
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace FelixFelicis.ParticleRendering.Simulation
 {
