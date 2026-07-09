@@ -29,6 +29,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private bool isDirty = true;
         private bool disposed;
 
+        /// <summary>
+        /// Set to true when an obstacle is removed. The orchestrator reads this
+        /// to wake sleeping particles that may have been resting on the removed
+        /// obstacle — without this, they float mid-air forever.
+        /// Reset to false after the orchestrator reads it.
+        /// </summary>
+        internal bool ObstacleWasRemoved { get; set; }
+
         // ── Static bridge ─────────────────────────────────────────────
 
         internal static void SetInstance(SandObstacleRegistry registry)
@@ -65,12 +73,19 @@ namespace FelixFelicis.ParticleRendering.Simulation
             instance.isDirty = true;
         }
 
-        /// <summary>Called by <see cref="SandObstacle.OnDisable"/>.</summary>
+        /// <summary>
+        /// Called by <see cref="SandObstacle.OnDisable"/>.
+        /// Sets <see cref="ObstacleWasRemoved"/> so the orchestrator can wake
+        /// sleeping particles that were resting on this obstacle.
+        /// </summary>
         public static void Unregister(SandObstacle obstacle)
         {
             if (instance == null) return;
             if (instance.obstacles.Remove(obstacle))
+            {
                 instance.isDirty = true;
+                instance.ObstacleWasRemoved = true;
+            }
         }
 
         /// <summary>

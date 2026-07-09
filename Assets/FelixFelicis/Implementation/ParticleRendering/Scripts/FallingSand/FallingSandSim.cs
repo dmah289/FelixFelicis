@@ -39,7 +39,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
         [SerializeField] private float airDrag = 0.01f;
         [SerializeField] private float frictionCoef = 0.3f;
         [SerializeField] private float contactDamping = 0.4f;
-        [SerializeField] private float wallFriction = 0.3f;
         [SerializeField, Range(1, 4)] private int substeps = 1;
         [SerializeField, Range(1, 6)] private int collisionIterations = 1;
 
@@ -54,6 +53,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
         [SerializeField, Range(1, 255)] private int sleepFrames = 10;
         [SerializeField] private float wakeOverlapFraction = 0.4f;
         [SerializeField] private float wakeSpeed = 0.8f;
+
+        [Header("Funnel")]
+        [Tooltip("Drag the SandFunnel MonoBehaviour that holds the two EdgeCollider2D walls.")]
+        [SerializeField] private SandFunnel funnel;
 
         [Header("Performance")]
         [Tooltip("Max milliseconds per FixedUpdate before skipping remaining substeps")]
@@ -121,6 +124,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             if (spawnedCount == 0) return;
 
+            // When an obstacle is removed, wake ALL sleeping particles so they
+            // can fall under gravity instead of floating mid-air. This is a
+            // brute-force wake — O(n) once per removal event, not per frame.
+            if (obstacleRegistry.ObstacleWasRemoved)
+            {
+                obstacleRegistry.ObstacleWasRemoved = false;
+                WakeNearbyParticles();
+            }
+
             // Build active indices (Burst job)
             new SandPhysics.BuildActiveIndicesJob
             {
@@ -151,9 +163,27 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 awakeCount = awakeCount,
             }.Schedule().Complete();
 
-            // Query obstacle data once per frame — static obstacles don't change
-            // between substeps. Avoids repeated dirty-check + managed call overhead.
+            // Query obstacle + funnel data once per frame — both are static between substeps.
             var (obstacleData, obstacleCount) = obstacleRegistry.GetObstacleData();
+
+            var funnelSegments = default(NativeArray<FunnelSegment>);
+            int funnelSegmentCount = 0;
+            float funnelBroadphaseMargin = 0f;
+            if (funnel != null)
+            {
+                var funnelData = funnel.GetSegments();
+                funnelSegments = funnelData.data;
+                funnelSegmentCount = funnelData.count;
+
+                // Broadphase margin must catch tunneled particles — expand by max
+                // displacement per substep, not just particle radius.
+                // v_max after falling spawnRange units: sqrt(2 × |gravity| × spawnRange)
+                // displacement_max = v_max × subDt + |gravity| × subDt²
+                float gravMag = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
+                float vMax = Mathf.Sqrt(2f * gravMag * spawnRange);
+                float maxDisplacement = vMax * subDt + gravMag * dtSqr;
+                funnelBroadphaseMargin = Mathf.Max(radiusMax, maxDisplacement);
+            }
 
             for (int s = 0; s < substeps; s++)
             {
@@ -229,7 +259,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     awakeCount = awakeCountRef.Value;
                 }
 
-                // Resolve obstacles (Burst job) — after particle collisions, before boundary clamp.
+                // Resolve obstacles (Burst job) — after particle collisions, before funnel walls.
                 if (obstacleCount > 0)
                 {
                     new SandPhysics.ResolveObstaclesJob
@@ -242,15 +272,33 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     }.Schedule().Complete();
                 }
 
-                // Resolve boundaries (Burst job)
-                new SandPhysics.ResolveBoundariesJob
+                // Resolve funnel walls (Burst job) — final safety clamp per substep.
+                if (funnelSegmentCount > 0)
+                {
+                    new SandPhysics.ResolveFunnelJob
+                    {
+                        particles = particles,
+                        activeIndices = activeIndices,
+                        awakeCount = awakeCount,
+                        segments = funnelSegments,
+                        segmentCount = funnelSegmentCount,
+                        friction = funnel.Friction,
+                        broadphaseMargin = funnelBroadphaseMargin,
+                    }.Schedule().Complete();
+                }
+            }
+
+            // Despawn particles below funnel spout (Burst job) — once per frame,
+            // after all substeps. Teleport + sleep = zero ongoing cost.
+            if (funnel != null)
+            {
+                new SandPhysics.DespawnOutOfBoundsJob
                 {
                     particles = particles,
                     activeIndices = activeIndices,
                     awakeCount = awakeCount,
-                    boundsX = spawnRange,
-                    boundsY = spawnRange,
-                    wallFriction = wallFriction,
+                    isSleeping = isSleeping,
+                    despawnY = funnel.DespawnBelowY,
                 }.Schedule().Complete();
             }
 
@@ -359,6 +407,43 @@ namespace FelixFelicis.ParticleRendering.Simulation
             isSleeping[spawnedCount] = false;
             sleepCounters[spawnedCount] = 0;
             spawnedCount++;
+
+            needsRenderUpload = true;
+        }
+
+        /// <summary>
+        /// Wakes sleeping particles that were near the removed obstacle.
+        /// Only wakes particles within the simulation bounds — despawned particles
+        /// (teleported to 9999,9999) are skipped to avoid waking the entire pool.
+        /// <para>
+        /// O(sleeping) scan, runs once per removal event, not per frame.
+        /// Uses a generous proximity threshold — slightly over-waking is cheap
+        /// (particles re-sleep in a few frames), but missing a floating cluster
+        /// is a visible artifact.
+        /// </para>
+        /// </summary>
+        private void WakeNearbyParticles()
+        {
+            // Wake any sleeping particle inside the sim bounds.
+            // Despawned particles are at (9999, 9999) — far outside bounds.
+            float bound = spawnRange + 1f;
+
+            for (int i = 0; i < spawnedCount; i++)
+            {
+                if (!isSleeping[i]) continue;
+
+                var p = particles[i];
+
+                // Skip despawned particles (teleported far away)
+                if (p.pos.x > bound || p.pos.x < -bound ||
+                    p.pos.y > bound || p.pos.y < -bound)
+                    continue;
+
+                isSleeping[i] = false;
+                sleepCounters[i] = 0;
+                p.prevPos = p.pos; // zero velocity — no phantom impulse
+                particles[i] = p;
+            }
 
             needsRenderUpload = true;
         }
