@@ -635,6 +635,22 @@ namespace FelixFelicis.ParticleRendering.Simulation
             public int segmentCount;
             public float friction;
 
+            /// <summary>
+            /// No-sleep zone: particles within this distance of any funnel segment
+            /// have their sleep counter reset to 0, preventing them from sleeping
+            /// on the inclined wall. This ensures sand always slides down to the spout
+            /// instead of accumulating on the wall surface.
+            /// Set to a multiple of particle radius (e.g. 5×) to catch particles
+            /// in the near-wall layer that would otherwise settle.
+            /// </summary>
+            public float noSleepDistance;
+
+            /// <summary>
+            /// Sleep counters — reset to 0 for particles near funnel walls.
+            /// Prevents sand from sleeping on inclined surfaces.
+            /// </summary>
+            public NativeArray<byte> sleepCounters;
+
             public void Execute()
             {
                 for (int a = 0; a < awakeCount; a++)
@@ -644,6 +660,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     float px = p.pos.x;
                     float py = p.pos.y;
                     float r = p.radius;
+                    bool nearWall = false;
 
                     for (int s = 0; s < segmentCount; s++)
                     {
@@ -706,7 +723,16 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         }
 
                         if (penetration <= 0f)
+                        {
+                            // No collision but check proximity for no-sleep zone.
+                            // signedDist is already computed — reuse it.
+                            if (signedDist >= 0f && signedDist < noSleepDistance)
+                                nearWall = true;
                             continue;
+                        }
+
+                        // Colliding = definitely near wall
+                        nearWall = true;
 
                         // ── Collision response (dead stop + Coulomb friction) ──
 
@@ -742,6 +768,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     }
 
                     particles[i] = p;
+
+                    // Particles near funnel walls cannot sleep — gravity must
+                    // always pull them toward the spout. Without this, piles
+                    // accumulate on inclined surfaces and freeze permanently.
+                    if (nearWall)
+                        sleepCounters[i] = 0;
                 }
             }
         }

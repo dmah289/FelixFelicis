@@ -99,6 +99,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private void Start()
         {
+            Application.targetFrameRate = 60;
             obstacleRegistry = new SandObstacleRegistry();
             SandObstacleRegistry.SetInstance(obstacleRegistry);
 
@@ -303,7 +304,8 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 }
 
                 // Resolve funnel walls (Burst job) — final safety clamp per substep.
-                // AABB + edge + normal all precomputed at bake — job is pure narrowphase.
+                // Also resets sleepCounters for particles near walls (no-sleep zone)
+                // to prevent sand from accumulating on inclined surfaces.
                 if (funnelSegmentCount > 0)
                 {
                     new SandPhysics.ResolveFunnelJob
@@ -314,6 +316,8 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         segments = funnelSegments,
                         segmentCount = funnelSegmentCount,
                         friction = funnelFriction,
+                        noSleepDistance = radiusMax * 5f,
+                        sleepCounters = sleepCounters,
                     }.Schedule().Complete();
                 }
             }

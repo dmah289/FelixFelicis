@@ -1159,7 +1159,7 @@ MonoBehaviour:
   radiusMax: 0.01
   gravity: {x: 0, y: -20}
   airDrag: 0.01
-  frictionCoef: 0.6
+  frictionCoef: 0.3
   contactDamping: 0.3
   substeps: 3
   collisionIterations: 4

@@ -285,7 +285,33 @@ friction = 0.05, penetration ≈ 0.01:
   → cát trượt tự do ✓
 ```
 
-Cát tích tụ ở cổ phễu do particle-particle collision (§1.4) + slope mechanics (§1.5). Không cần logic đặc biệt.
+#### 1.7.6 No-Sleep Zone — Chống đọng cát trên thành nghiêng
+
+**Vấn đề:** Funnel friction = 0 (trơn) nhưng particle-particle friction (0.6) giữ particles bám nhau trên thành. Pile lớn dần → particles trượt chậm → displacement < sleepThreshold → sleep → pile đông cứng vĩnh viễn.
+
+**3 nguyên nhân chồng lấp:**
+
+1. **Particle-particle friction cao trên mặt nghiêng:** Contact ngang (side-by-side) → `verticalness ≈ 0` → `effFriction = frictionCoef × 1.0` = full friction. Particles bám chặt nhau.
+2. **Sleep quá nhạy:** `sleepThreshold = 0.01`, `sleepFrames = 30` → particles trượt chậm dần → sleep.
+3. **CollisionIterations cao (4):** Pile converge ổn định cấu trúc thay vì tan.
+
+**Giải pháp: No-sleep zone gần funnel wall.**
+
+`ResolveFunnelJob` kiểm tra mỗi particle: nếu **colliding** hoặc **within `noSleepDistance`** (5× radius) của bất kỳ funnel segment nào → reset `sleepCounters[i] = 0`. Particle gần thành phễu **không bao giờ sleep** → gravity luôn kéo xuống → cát trượt mãi.
+
+```
+Per particle, sau collision response:
+  if nearWall:
+      sleepCounters[i] = 0    ← reset, không cho sleep
+
+nearWall = true khi:
+  ① Particle colliding với segment (penetration > 0)
+  ② Particle gần segment (signedDist ∈ [0, noSleepDistance]) dù không overlap
+```
+
+`noSleepDistance = radiusMax × 5` — catch cả lớp particles gần wall mà không trực tiếp chạm. Reuse `signedDist` đã tính — zero extra compute.
+
+**Hệ quả:** Cát **luôn chảy qua** cổ phễu, không tích tụ ở bất kỳ đâu trên thành. Pile chỉ có thể hình thành trên obstacle hoặc trên particles khác xa funnel wall.
 
 ---
 
