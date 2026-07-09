@@ -416,17 +416,28 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// Only wakes particles within the simulation bounds — despawned particles
         /// (teleported to 9999,9999) are skipped to avoid waking the entire pool.
         /// <para>
-        /// O(sleeping) scan, runs once per removal event, not per frame.
-        /// Uses a generous proximity threshold — slightly over-waking is cheap
-        /// (particles re-sleep in a few frames), but missing a floating cluster
-        /// is a visible artifact.
+        /// Applies a small downward nudge (<c>prevPos</c> shifted opposite to gravity)
+        /// to break equilibrium — without this, tightly packed particles wake with
+        /// zero velocity, collision-correct each other in place, and immediately
+        /// re-sleep as a floating cluster.
         /// </para>
         /// </summary>
         private void WakeNearbyParticles()
         {
-            // Wake any sleeping particle inside the sim bounds.
-            // Despawned particles are at (9999, 9999) — far outside bounds.
             float bound = spawnRange + 1f;
+
+            // Nudge = implicit velocity in gravity direction via prevPos shift.
+            // Must be large enough that collision corrections from overlapping
+            // neighbors cannot cancel it out in a single frame. Particles deep
+            // inside a pile receive corrections from ~27 neighbors, each up to
+            // ~2×radius×slopeBias ≈ 0.014 (radius=0.01). A 0.1-unit nudge
+            // dominates this and guarantees net downward displacement > sleepThreshold
+            // for many frames, preventing instant re-sleep.
+            float nudgeMag = Mathf.Max(radiusMax * 10f, sleepVelocityThreshold * 20f);
+            float gravLen = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
+            float2 nudge = gravLen > 1e-6f
+                ? new float2(-gravity.x / gravLen * nudgeMag, -gravity.y / gravLen * nudgeMag)
+                : new float2(0f, nudgeMag);
 
             for (int i = 0; i < spawnedCount; i++)
             {
@@ -441,7 +452,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                 isSleeping[i] = false;
                 sleepCounters[i] = 0;
-                p.prevPos = p.pos; // zero velocity — no phantom impulse
+
+                // Shift prevPos opposite to gravity → implicit velocity toward gravity.
+                // This breaks the static equilibrium of the sleeping pile.
+                p.prevPos = p.pos + nudge;
                 particles[i] = p;
             }
 

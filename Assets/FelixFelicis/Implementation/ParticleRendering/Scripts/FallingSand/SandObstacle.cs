@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -45,6 +46,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private void Awake()
         {
             attachedCollider = DetectCollider();
+
+            CountdownDisable();
+        }
+        
+        private async UniTask CountdownDisable() 
+        {
+            await UniTask.Delay(3000);
+            gameObject.SetActive(false);
         }
 
         private void OnEnable()
@@ -168,8 +177,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
         }
 
         /// <summary>
-        /// Box → AABB (axis-aligned, rotation ignored in Phase 1).
-        /// halfExtents = (collider.size × scale).xy × 0.5.
+        /// Box → OBB (Oriented Bounding Box). Supports Z-axis rotation.
+        /// <c>axisDirection</c> stores <c>(cos θ, sin θ)</c> of the Z-rotation
+        /// so the Burst job can rotate particles into box-local space.
+        /// Broadphase AABB is the world-axis-aligned bounding box of the rotated OBB.
         /// </summary>
         private void BuildBox(BoxCollider box, float2 center, Vector3 scale)
         {
@@ -178,15 +189,33 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 size.x * Mathf.Abs(scale.x) * 0.5f,
                 size.y * Mathf.Abs(scale.y) * 0.5f);
 
+            // Rotate collider.center offset by Z-rotation before adding to center
+            float zRad = transform.eulerAngles.z * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(zRad);
+            float sin = Mathf.Sin(zRad);
+
             var offset = box.center;
-            center += new float2(offset.x * scale.x, offset.y * scale.y);
+            float2 scaledOffset = new float2(offset.x * scale.x, offset.y * scale.y);
+            float2 rotatedOffset = new float2(
+                scaledOffset.x * cos - scaledOffset.y * sin,
+                scaledOffset.x * sin + scaledOffset.y * cos);
+            center += rotatedOffset;
 
             cachedData.center = center;
             cachedData.halfExtents = halfExtents;
-            cachedData.axisDirection = float2.zero;
+            cachedData.axisDirection = new float2(cos, sin);
 
-            cachedData.aabbMin = center - halfExtents - particleRadiusMax;
-            cachedData.aabbMax = center + halfExtents + particleRadiusMax;
+            // Broadphase AABB = world-axis envelope of the rotated OBB.
+            // Each OBB corner projects to ±|cos|×hx ± |sin|×hy on the world X axis
+            // (and similarly for Y), giving the tightest axis-aligned bounding box.
+            float absCos = Mathf.Abs(cos);
+            float absSin = Mathf.Abs(sin);
+            float2 worldHalf = new float2(
+                absCos * halfExtents.x + absSin * halfExtents.y,
+                absSin * halfExtents.x + absCos * halfExtents.y);
+
+            cachedData.aabbMin = center - worldHalf - particleRadiusMax;
+            cachedData.aabbMax = center + worldHalf + particleRadiusMax;
         }
 
         /// <summary>

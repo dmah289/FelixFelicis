@@ -53,7 +53,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// <summary>Shape-dependent half-extents. See struct summary for per-shape meaning.</summary>
         public float2 halfExtents;
 
-        /// <summary>Capsule medial axis unit vector. Unused for Circle/Box.</summary>
+        /// <summary>
+        /// Shape-dependent axis data:<br/>
+        /// Circle  → unused (0,0).<br/>
+        /// Box     → (cos θ, sin θ) of Z-rotation for OBB local-space transform.<br/>
+        /// Capsule → medial axis unit vector.
+        /// </summary>
         public float2 axisDirection;
 
         // ── Surface properties ────────────────────────────────────────

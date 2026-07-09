@@ -466,8 +466,19 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                             case ObstacleShape.Box:
                             {
-                                float localX = px - obs.center.x;
-                                float localY = py - obs.center.y;
+                                // OBB: axisDirection = (cos θ, sin θ) of Z-rotation.
+                                // Rotate particle into box-local space using inverse rotation
+                                // (transpose of 2D rotation matrix: cos/sin swap sign on sin).
+                                float bcos = obs.axisDirection.x;
+                                float bsin = obs.axisDirection.y;
+
+                                float worldDx = px - obs.center.x;
+                                float worldDy = py - obs.center.y;
+
+                                // Inverse rotation: local = Rᵀ × world
+                                float localX =  bcos * worldDx + bsin * worldDy;
+                                float localY = -bsin * worldDx + bcos * worldDy;
+
                                 float hx = obs.halfExtents.x;
                                 float hy = obs.halfExtents.y;
 
@@ -477,29 +488,29 @@ namespace FelixFelicis.ParticleRendering.Simulation
                                 bool isInsideX = localX == clampedX;
                                 bool isInsideY = localY == clampedY;
 
+                                // Compute normal in LOCAL space, then rotate back to world.
+                                float localNX, localNY;
+
                                 if (isInsideX && isInsideY)
                                 {
-                                    // Center inside box — push out along the axis
-                                    // with the smallest penetration depth.
                                     float distToEdgeX = hx - math.abs(localX);
                                     float distToEdgeY = hy - math.abs(localY);
 
                                     if (distToEdgeX < distToEdgeY)
                                     {
-                                        normalX = localX >= 0f ? 1f : -1f;
-                                        normalY = 0f;
+                                        localNX = localX >= 0f ? 1f : -1f;
+                                        localNY = 0f;
                                         penetration = distToEdgeX + p.radius;
                                     }
                                     else
                                     {
-                                        normalX = 0f;
-                                        normalY = localY >= 0f ? 1f : -1f;
+                                        localNX = 0f;
+                                        localNY = localY >= 0f ? 1f : -1f;
                                         penetration = distToEdgeY + p.radius;
                                     }
                                 }
                                 else
                                 {
-                                    // Center outside box — closest point on box surface.
                                     float ddx = localX - clampedX;
                                     float ddy = localY - clampedY;
                                     float distSq = ddx * ddx + ddy * ddy;
@@ -510,10 +521,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                                     float invDist = math.rsqrt(distSq);
                                     float dist = distSq * invDist;
-                                    normalX = ddx * invDist;
-                                    normalY = ddy * invDist;
+                                    localNX = ddx * invDist;
+                                    localNY = ddy * invDist;
                                     penetration = p.radius - dist;
                                 }
+
+                                // Rotate normal back to world: world = R × local
+                                normalX = bcos * localNX - bsin * localNY;
+                                normalY = bsin * localNX + bcos * localNY;
                                 break;
                             }
 
