@@ -77,11 +77,16 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private float sleepThresholdSqr;
         private float wakeSpeedSqr;
 
+        private SandObstacleRegistry obstacleRegistry;
+
         // Skip render upload when nothing moved (all sleeping, no spawns).
         private bool needsRenderUpload;
 
         private void Start()
         {
+            obstacleRegistry = new SandObstacleRegistry();
+            SandObstacleRegistry.SetInstance(obstacleRegistry);
+
             particles = new NativeArray<SandParticle>(maxParticles, Allocator.Persistent);
             isSleeping = new NativeArray<bool>(maxParticles, Allocator.Persistent);
             sleepCounters = new NativeArray<byte>(maxParticles, Allocator.Persistent);
@@ -145,6 +150,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 activeIndices = activeIndices,
                 awakeCount = awakeCount,
             }.Schedule().Complete();
+
+            // Query obstacle data once per frame — static obstacles don't change
+            // between substeps. Avoids repeated dirty-check + managed call overhead.
+            var (obstacleData, obstacleCount) = obstacleRegistry.GetObstacleData();
 
             for (int s = 0; s < substeps; s++)
             {
@@ -218,6 +227,19 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         awakeCount = awakeCountRef,
                     }.Schedule().Complete();
                     awakeCount = awakeCountRef.Value;
+                }
+
+                // Resolve obstacles (Burst job) — after particle collisions, before boundary clamp.
+                if (obstacleCount > 0)
+                {
+                    new SandPhysics.ResolveObstaclesJob
+                    {
+                        particles = particles,
+                        activeIndices = activeIndices,
+                        awakeCount = awakeCount,
+                        obstacles = obstacleData,
+                        obstacleCount = obstacleCount,
+                    }.Schedule().Complete();
                 }
 
                 // Resolve boundaries (Burst job)
@@ -350,6 +372,13 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private void OnDestroy()
         {
+            if (obstacleRegistry != null)
+            {
+                SandObstacleRegistry.ClearInstance(obstacleRegistry);
+                obstacleRegistry.Dispose();
+                obstacleRegistry = null;
+            }
+
             if (particles.IsCreated) particles.Dispose();
             if (isSleeping.IsCreated) isSleeping.Dispose();
             if (sleepCounters.IsCreated) sleepCounters.Dispose();

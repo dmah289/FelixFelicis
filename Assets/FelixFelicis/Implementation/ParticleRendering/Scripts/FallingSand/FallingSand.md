@@ -1,6 +1,6 @@
 # Falling Sand Simulation
 
-> 10,000 hạt cát · PBD + Verlet · GPU instancing 1 draw call
+> 10,000 hạt cát · PBD + Verlet · obstacle collision · GPU instancing 1 draw call
 
 Namespace: `FelixFelicis.ParticleRendering.Simulation` · Assembly: `com.FelixFelicis`
 
@@ -192,6 +192,252 @@ Penetration depth ∝ normal force → va mạnh vào tường = friction lớn 
 
 ---
 
+### 1.9 Obstacle Collision
+
+Cho phép đặt object 3D (Sphere, Box, Capsule) vào scene và hạt cát va chạm với chúng. Simulation là 2D (mặt phẳng XY, Z=0) nên mọi 3D Collider được **chiếu xuống 2D proxy shape** tại thời điểm đăng ký — zero per-frame projection cost.
+
+#### 1.9.1 Chiếu 3D → 2D
+
+| Unity Collider | 2D Proxy | Phép chiếu |
+|----------------|----------|------------|
+| `SphereCollider` | Circle | `center = position.xy`, `R = collider.radius × max(scaleX, scaleY)` |
+| `BoxCollider` | AABB | `center = position.xy`, `halfExtents = (size × scale).xy × 0.5` (axis-aligned, rotation bỏ qua Phase 1) |
+| `CapsuleCollider` (X/Y) | 2D Capsule | `center = position.xy`, project axis lên XY bằng Z-rotation, `R = radius × radialScale`, `halfH = height/2 × axisScale - R` |
+| `CapsuleCollider` (Z) | Circle | Trục vuông góc XY → degenerate thành circle |
+
+`collider.center` offset được tính vào `center` — hỗ trợ collider không ở origin của GameObject.
+
+#### 1.9.2 Data Layout — ObstacleData (52 bytes)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  aabbMin      float2   8B  ← broadphase AABB, pre-expanded  │
+│  aabbMax      float2   8B  ← by particleRadiusMax           │
+│  center       float2   8B  ← narrowphase: 2D center         │
+│  halfExtents  float2   8B  ← shape-dependent (§1.9.1)       │
+│  axisDirection float2  8B  ← capsule axis (Circle/Box: 0)   │
+│  friction     float    4B  ← per-obstacle Coulomb μ         │
+│  bounciness   float    4B  ← restitution [0,1]              │
+│  shape        byte     1B  ← enum dispatch tag               │
+│  [3B padding]                                                │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Fat struct — tất cả shape parameters lưu chung, `shape` tag quyết định field nào active. Obstacle count nhỏ (≤50) nên cache line alignment ít quan trọng hơn `SandParticle`.
+
+`halfExtents` overloaded per shape:
+- Circle: `(radius, 0)`
+- Box: `(halfWidth, halfHeight)`
+- Capsule: `(radius, halfSegmentLength)`
+
+#### 1.9.3 Broadphase — Precomputed Expanded AABB
+
+**Vấn đề:** Với 20+ obstacles × 10K particles, mỗi pair chạy narrowphase (rsqrt, sqrt, clamp) rất lãng phí khi hầu hết particles ở xa obstacle.
+
+**Giải pháp:** Precompute AABB tại thời điểm bake (khi obstacle đăng ký), mở rộng sẵn bằng `particleRadiusMax`:
+
+```
+aabbMin = shapeMin - particleRadiusMax
+aabbMax = shapeMax + particleRadiusMax
+```
+
+Trong Burst job, broadphase rejection chỉ là **point-in-box test** trên particle center — 4 float comparisons, KHÔNG cần tính radius per particle:
+
+```
+if (px < obs.aabbMin.x || px > obs.aabbMax.x ||
+    py < obs.aabbMin.y || py > obs.aabbMax.y)
+    continue;   ← skip toàn bộ narrowphase + collision response
+```
+
+AABB per shape type:
+
+| Shape | shapeMin / shapeMax |
+|-------|---------------------|
+| Circle | `center ± (R + particleRadiusMax)` |
+| Box | `center ± halfExtents ± particleRadiusMax` |
+| Capsule | `center ± abs(axis) × halfH ± (R + particleRadiusMax)` |
+
+**Tại sao brute-force mà không dùng spatial grid cho obstacles?**
+
+- 50 obstacles × 4 comparisons = 200 float ops per particle — **microseconds** trong Burst SIMD
+- Spatial grid thêm: NativeArray allocation, grid build overhead, cache miss từ indirection
+- Particle array là memory-bandwidth bottleneck, không phải obstacle comparisons
+- Nếu Phase 2 cần 100+ obstacles, thêm uniform grid sau — chỉ thay inner loop
+
+#### 1.9.4 Narrowphase — Signed Distance per Shape
+
+Mỗi shape tính: **(penetration, normal)** — penetration > 0 nghĩa là particle chồng lấn obstacle, normal hướng ra ngoài obstacle.
+
+**Circle** (giống particle-particle nhưng obstacle immovable):
+
+```
+delta = p.pos - obs.center
+distSq = dot(delta, delta)
+minDist = R + r                         ← obstacle radius + particle radius
+
+if distSq ≥ minDist² or distSq < ε:    skip (không overlap hoặc degenerate)
+
+invDist = rsqrt(distSq)                 ← SSE rsqrtss instruction
+dist = distSq × invDist                 ← dist = sqrt(distSq) = distSq/sqrt(distSq)
+normal = delta × invDist                ← hướng obstacle center → particle
+penetration = minDist - dist
+```
+
+**Box (AABB):**
+
+Hai nhánh tùy particle center nằm trong hay ngoài box:
+
+```
+local = p.pos - obs.center
+clamped = clamp(local, -halfExtents, halfExtents)
+
+if local == clamped:
+    ┌── Center TRONG box ──────────────────────────────────┐
+    │ distToEdge = halfExtents - abs(local)                │
+    │ Chọn axis penetration nhỏ nhất → push ra theo axis đó│
+    │ penetration = distToEdge[minAxis] + r                │
+    │ normal = ±1 dọc minAxis                              │
+    └──────────────────────────────────────────────────────┘
+else:
+    ┌── Center NGOÀI box ──────────────────────────────────┐
+    │ delta = local - clamped      ← vector đến closest point│
+    │ distSq = dot(delta, delta)                            │
+    │ if distSq ≥ r²: skip                                 │
+    │ invDist = rsqrt(distSq)                               │
+    │ normal = delta × invDist                              │
+    │ penetration = r - dist                                │
+    └──────────────────────────────────────────────────────┘
+```
+
+**Capsule:**
+
+2D capsule = Minkowski sum(line segment, circle). Reduce to circle test:
+
+```
+delta = p.pos - obs.center
+t = dot(delta, axisDirection)                  ← project lên medial axis
+t = clamp(t, -halfSegLen, halfSegLen)          ← clamp to segment
+closestOnAxis = obs.center + axisDirection × t
+
+toParticle = p.pos - closestOnAxis             ← giờ giống circle test
+distSq = dot(toParticle, toParticle)
+minDist = R + r
+
+... (cùng math với Circle)
+```
+
+Degenerate case: `halfSegLen = 0` → `closestOnAxis = center` → circle test tự nhiên.
+
+#### 1.9.5 Collision Response
+
+3 giai đoạn per contact, thứ tự quan trọng:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ 1. Capture velocity TRƯỚC correction                                 │
+│    vel = pos - prevPos                                               │
+│    normalVel = dot(vel, normal)                                      │
+│                                                                      │
+│ 2. Position correction — đẩy particle ra khỏi obstacle              │
+│    pos += normal × penetration                                       │
+│                                                                      │
+│ 3. Restitution — phản xạ vận tốc pháp tuyến qua prevPos             │
+│    if normalVel < 0:   (chỉ khi đang tiến vào)                      │
+│        prevPos += normal × normalVel × (1 + bounciness)              │
+│                                                                      │
+│ 4. Coulomb friction — clamp tangent velocity                         │
+│    tangentVel = vel - normalVel × normal                             │
+│    correction = min(|tangentVel|, friction × penetration)            │
+│    prevPos += normalize(tangentVel) × correction                     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Restitution trong Verlet:**
+
+Velocity implicit: `vel = pos - prevPos`. Để phản xạ thành phần pháp tuyến:
+
+```
+Trước:  implicit velocity along normal = normalVel  (âm = tiến vào)
+Sau:    muốn reflected velocity         = -normalVel × bounciness
+
+prevPos cần shift = normalVel × (1 + bounciness)
+  → bounciness=0: shift = normalVel → pos - newPrevPos dọc normal = 0  (dead stop)
+  → bounciness=1: shift = 2×normalVel → reflected velocity = -normalVel (full bounce)
+```
+
+Friction dùng cùng Coulomb model với `ResolveBoundariesJob`: `maxFriction = μ × penetration` — va mạnh hơn (penetration lớn) → friction lớn hơn → bám chặt bề mặt hơn.
+
+Dead zone: `tangentLenSq > maxFriction² × 0.01` — dưới 1% max friction thì bỏ qua, tránh `1/tangentLen` instability.
+
+#### 1.9.6 Pipeline Integration
+
+Obstacle resolution nằm **sau** particle-particle collision, **trước** boundary clamp:
+
+```
+FixedUpdate()
+  ...
+  obstacleData = registry.GetObstacleData()    ← 1 lần per frame, ngoài substep loop
+  for substep:
+    Integrate          O(awake)
+    SpatialHashBuild   O(n)
+    ResolveCollisions  O(awake × ~27)
+      if wake → rebuild activeIndices
+    ResolveObstacles   O(awake × obstacleCount)  ← MỚI
+    ResolveBoundaries  O(awake)                   ← safety clamp cuối cùng
+  UpdateSleep          O(awake)
+```
+
+**Tại sao sau collisions, trước boundaries?**
+- Sau collisions: particles settle với nhau trước, rồi mới giải quyết obstacle → giảm jitter
+- Trước boundaries: boundary là safety clamp cuối cùng — particle không bao giờ thoát khỏi bounding box
+
+**`GetObstacleData()` hoist ra ngoài substep loop:**
+Obstacle data tĩnh (static obstacles) — không đổi giữa substeps. Query 1 lần per frame tránh `substeps - 1` managed dirty-check call.
+
+#### 1.9.7 Registration — Execution Order Safety
+
+Unity không đảm bảo thứ tự `Start()`/`OnEnable()` giữa các MonoBehaviour. Race condition:
+
+```
+SandObstacle.OnEnable()  →  SandObstacleRegistry.Register()
+                              → instance == null  →  SILENT DROP!
+FallingSandSim.Start()   →  SetInstance(registry)   ← quá muộn
+```
+
+**Giải pháp:** `SetInstance()` thực hiện **retroactive scan** bằng `FindObjectsByType<SandObstacle>()` để đăng ký tất cả obstacles đã active trước khi registry tồn tại. `Register()` check `Contains()` để tránh duplicate.
+
+```
+FallingSandSim.Start()
+  → SetInstance(registry)
+    → FindObjectsByType<SandObstacle>()       ← catch tất cả đã miss
+    → foreach: Register(obstacle)             ← Contains check = no dupes
+
+SandObstacle.OnEnable() (runtime spawn sau Start)
+  → Register() hoạt động bình thường          ← registry đã tồn tại
+```
+
+`SandObstacle.RebuildCachedData()` có **lazy DetectCollider()** — phòng trường hợp `Awake()` chưa kịp chạy khi retroactive scan gọi `ToObstacleData()`.
+
+#### 1.9.8 Surface Properties (per-obstacle)
+
+| Property | Range | Default | Ý nghĩa |
+|----------|-------|---------|---------|
+| `friction` | 0 – 2 | 0.3 | Coulomb μ: 0=trơn trượt, >1=cát bám rất chặt |
+| `bounciness` | 0 – 1 | 0 | Restitution: 0=dead stop (giống boundary), 1=full elastic bounce |
+| `particleRadiusMax` | float | 0.12 | Phải match `FallingSandSim.radiusMax`. Dùng để expand broadphase AABB |
+
+#### 1.9.9 Rủi ro đã biết
+
+| Rủi ro | Trạng thái | Mitigation |
+|--------|-----------|------------|
+| Tunneling qua obstacle mỏng | Accepted | Substeps giúp. Recommend thickness > 2× `radiusMax`. CCD optional Phase 2 |
+| Box corner jitter (normal nhảy 90°) | Accepted | PBD tolerant. Phase 1.5: thêm `cornerRadius` → rounded rectangle SDF |
+| Multiple obstacles overlap | Accepted | Sequential resolve OK cho PBD — không overlap obstacles trong Phase 1 |
+| Capsule Z degenerate | Handled | `halfExtents.y = 0` → circle. Math tự xử lý qua `clamp(t, 0, 0) = 0` |
+| `particleRadiusMax` out-of-sync | User error | Tooltip cảnh báo. Phase 2: tự đọc từ `FallingSandSim` |
+
+---
+
 ## 2. Tối ưu hiệu năng
 
 ### 2.1 SandParticle 36B → 32B
@@ -276,10 +522,11 @@ Settled: 0 CPU cost + 0 bandwidth (160KB/frame → 0).
 ### 2.5 Substeps + Time Budget
 
 ```csharp
+obstacleData = registry.GetObstacleData()   // ← 1 lần/frame, ngoài substep loop (static obstacles)
 for (int s = 0; s < substeps; s++)
 {
     if (s > 0 && stopwatch.ElapsedTicks > budgetTicks) break;  // ≥1 substep guaranteed
-    Integrate → BuildHash → ResolveCollisions → ResolveBoundaries
+    Integrate → BuildHash → ResolveCollisions → ResolveObstacles → ResolveBoundaries
 }
 UpdateSleep   ← ngoài substep loop: đo net frame displacement, không per-substep jitter
 ```
@@ -323,13 +570,15 @@ Budget `maxPhysicsMs = 6ms` → degrade gracefully (ít substeps) thay vì frame
 
 ```
 FallingSandSim (MonoBehaviour)
-  ├── SandParticle[]     32B × maxParticles
-  ├── bool[] isSleeping  ┐
-  ├── byte[] sleepCounters├ parallel sleep arrays
-  ├── int[] activeIndices ┘ rebuilt each FixedUpdate
-  ├── SpatialHash2D        counting-sort
-  ├── SandPhysics          static stateless solver
-  ├── SandColors           palette (spawn only)
+  ├── SandParticle[]       32B × maxParticles
+  ├── bool[] isSleeping    ┐
+  ├── byte[] sleepCounters ├ parallel sleep arrays
+  ├── int[] activeIndices  ┘ rebuilt each FixedUpdate
+  ├── SpatialHash2D          counting-sort (particle-particle)
+  ├── SandObstacleRegistry   dirty-flag NativeArray<ObstacleData>
+  │     └── SandObstacle[]   MonoBehaviour per scene obstacle
+  ├── SandPhysics            static stateless solver (8 Burst IJob)
+  ├── SandColors             palette (spawn only)
   └──► ParticleProvider.Writer → ParticleDrawer → GPU → shader
 ```
 
@@ -337,6 +586,7 @@ FallingSandSim (MonoBehaviour)
 
 ```
 Start()
+  create SandObstacleRegistry + SetInstance (retroactive scan)
   alloc particles[], isSleeping[], sleepCounters[], activeIndices[]
   create SpatialHash2D
   if Burst: spawn all
@@ -348,13 +598,15 @@ FixedUpdate()                              LateUpdate()
   awakeCount = BuildActiveIndices()            (sleeping still visible)
   if awakeCount == 0: return    ◄─ early exit
   needsRenderUpload = true
+  obstacleData = registry.GetObstacleData()  ← 1×/frame, ngoài substep
   SnapshotFrameStart()
   for substep:
     if over budget: break
     Integrate()              O(awake)
     hash.Build()             O(n) — all particles
-    ResolveCollisions()      O(n) outer, compact sleep skip
+    ResolveCollisions()      O(awake × ~27)
       if wake → rebuild activeIndices
+    ResolveObstacles()       O(awake × obstacleCount)  ← broadphase AABB + narrowphase
     ResolveBoundaries()      O(awake)
   UpdateSleep()              O(awake)
 ```
@@ -409,6 +661,10 @@ Position re-cache sau mỗi contact (`px = p[i].pos.x`) — distance chính xác
 | wakeSpeed | 0.8 | Active particle min speed |
 | **Budget** | | |
 | maxPhysicsMs | 6 | ms per FixedUpdate |
+| **Obstacle** (per SandObstacle) | | |
+| friction | 0.3 | Coulomb μ surface (0=trơn, >1=bám chặt) |
+| bounciness | 0 | Restitution (0=dead stop, 1=elastic) |
+| particleRadiusMax | 0.12 | AABB expand. Phải match FallingSandSim.radiusMax |
 
 ---
 
@@ -416,11 +672,14 @@ Position re-cache sau mỗi contact (`px = p[i].pos.x`) — distance chính xác
 
 ```
 Simulation/
-  SandParticle.cs       32B struct: pos, prevPos, frameStartPos, radius, packedColor
-  SpatialHash2D.cs      counting-sort, 3-pass O(n), cached particleCells[]
-  SandPhysics.cs        static solver + BuildActiveIndices + FastInvSqrt
-  SandColors.cs         5 earth tones + HSV jitter → packed uint
-  FallingSandSim.cs     orchestrator: parallel arrays, activeIndices, wake tracking, render skip
+  SandParticle.cs           32B struct: pos, prevPos, frameStartPos, radius, packedColor
+  SpatialHash2D.cs          counting-sort, 3-pass O(n), cached particleCells[]
+  SandPhysics.cs            static solver: 8 Burst IJob (7 physics + 1 render copy) + managed UpdateSleep
+  SandColors.cs             5 earth tones + HSV jitter → packed uint
+  FallingSandSim.cs         orchestrator: parallel arrays, activeIndices, wake tracking, render skip
+  ObstacleData.cs           52B blittable struct + ObstacleShape enum (Circle/Box/Capsule)
+  SandObstacle.cs           per-obstacle MonoBehaviour: 3D→2D projection, precomputed AABB, Inspector props
+  SandObstacleRegistry.cs   managed collector: dirty-flag NativeArray, retroactive registration
 ```
 
 ---
@@ -440,6 +699,12 @@ Simulation/
 | 9 | Boundaries | Không thoát |
 | 10 | Enter/Exit Play ×3 | Không error/leak |
 | 11 | Wake | Particle mới đánh thức pile |
+| 12 | Obstacle Circle | Sphere ở gốc: cát trượt 2 bên, tích tụ trên |
+| 13 | Obstacle Box | Cube ở gốc: cát đổ 2 cạnh, pile ở góc |
+| 14 | Obstacle Capsule | Capsule xoay: cát trượt dọc axis |
+| 15 | Obstacle bounciness | bounciness=0.5: cát nảy nhẹ khi va chạm |
+| 16 | 20+ obstacles | Particle không thoát, frame time OK |
+| 17 | Obstacle broadphase | Profiler: ResolveObstaclesJob < 1ms (10K + 30 obstacles) |
 
 ---
 
@@ -447,12 +712,15 @@ Simulation/
 
 | Metric | Giá trị |
 |--------|---------|
-| Struct size | 32B — 2/cache line, no straddling |
+| Struct size | SandParticle 32B — 2/cache line. ObstacleData 52B (obstacle count nhỏ) |
 | Sleep state | Parallel NativeArray bool/byte — 64/cache line |
 | Non-collision loops | O(awake) via activeIndices |
 | Collision outer loop | O(awake) via activeIndices (not O(n)) |
-| Burst compilation | 6 IJob structs, auto-SIMD |
+| Obstacle broadphase | Precomputed AABB, point-in-box: 4 float comparisons per obstacle |
+| Obstacle narrowphase | Per-shape SDF: Circle (rsqrt), Box (clamp), Capsule (dot+clamp+rsqrt) |
+| Obstacle data query | 1×/frame (hoisted ngoài substep loop) — static obstacles |
+| Burst compilation | 8 IJob structs (7 physics + 1 render copy), auto-SIMD, FloatMode.Fast |
 | Math | math.rsqrt (SSE rsqrtss) |
 | Fully settled | FixedUpdate ≈ 0, LateUpdate ≈ 0 |
-| GC in hot path | 0 |
+| GC in hot path | 0 (obstacle NativeArray pre-allocated, grow-only, dirty-flag rebuild) |
 | Render | 1 draw call, 1 memcpy (skipped when settled) |

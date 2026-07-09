@@ -395,6 +395,206 @@ namespace FelixFelicis.ParticleRendering.Simulation
             }
         }
 
+        // ── ResolveObstaclesJob ───────────────────────────────────────
+
+        /// <summary>
+        /// Resolves particle ↔ obstacle collisions for all active particles.
+        /// <para>
+        /// Two-phase per obstacle: <br/>
+        /// 1. <b>Broadphase</b> — precomputed AABB (expanded by max particle radius at bake time).
+        ///    Point-in-box test: 4 float comparisons, no per-particle radius math.<br/>
+        /// 2. <b>Narrowphase</b> — per-shape signed distance (Circle, Box, Capsule).
+        /// </para>
+        /// <para>
+        /// Collision response: position correction + configurable restitution + Coulomb friction.
+        /// All math inlined — same rationale as <see cref="ResolveCollisionsJob"/>.
+        /// </para>
+        /// </summary>
+        [BurstCompile(FloatMode = FloatMode.Fast)]
+        public struct ResolveObstaclesJob : IJob
+        {
+            public NativeArray<SandParticle> particles;
+            [ReadOnly] public NativeArray<int> activeIndices;
+            public int awakeCount;
+
+            [ReadOnly] public NativeArray<ObstacleData> obstacles;
+            public int obstacleCount;
+
+            public void Execute()
+            {
+                for (int a = 0; a < awakeCount; a++)
+                {
+                    int i = activeIndices[a];
+                    var p = particles[i];
+                    float px = p.pos.x;
+                    float py = p.pos.y;
+
+                    for (int o = 0; o < obstacleCount; o++)
+                    {
+                        var obs = obstacles[o];
+
+                        // ── Broadphase: precomputed AABB (expanded by radiusMax at bake) ──
+                        // Point-in-box: the AABB already accounts for max particle radius,
+                        // so this is a zero-overhead rejection for distant obstacles.
+                        if (px < obs.aabbMin.x || px > obs.aabbMax.x ||
+                            py < obs.aabbMin.y || py > obs.aabbMax.y)
+                            continue;
+
+                        float penetration;
+                        float normalX, normalY;
+
+                        // ── Narrowphase dispatch (inlined) ──────────
+                        switch (obs.shape)
+                        {
+                            case ObstacleShape.Circle:
+                            {
+                                float dx = px - obs.center.x;
+                                float dy = py - obs.center.y;
+                                float distSq = dx * dx + dy * dy;
+                                float minDist = obs.halfExtents.x + p.radius;
+
+                                if (distSq >= minDist * minDist || distSq < 1e-10f)
+                                    continue;
+
+                                float invDist = math.rsqrt(distSq);
+                                float dist = distSq * invDist;
+                                normalX = dx * invDist;
+                                normalY = dy * invDist;
+                                penetration = minDist - dist;
+                                break;
+                            }
+
+                            case ObstacleShape.Box:
+                            {
+                                float localX = px - obs.center.x;
+                                float localY = py - obs.center.y;
+                                float hx = obs.halfExtents.x;
+                                float hy = obs.halfExtents.y;
+
+                                float clampedX = localX < -hx ? -hx : (localX > hx ? hx : localX);
+                                float clampedY = localY < -hy ? -hy : (localY > hy ? hy : localY);
+
+                                bool isInsideX = localX == clampedX;
+                                bool isInsideY = localY == clampedY;
+
+                                if (isInsideX && isInsideY)
+                                {
+                                    // Center inside box — push out along the axis
+                                    // with the smallest penetration depth.
+                                    float distToEdgeX = hx - math.abs(localX);
+                                    float distToEdgeY = hy - math.abs(localY);
+
+                                    if (distToEdgeX < distToEdgeY)
+                                    {
+                                        normalX = localX >= 0f ? 1f : -1f;
+                                        normalY = 0f;
+                                        penetration = distToEdgeX + p.radius;
+                                    }
+                                    else
+                                    {
+                                        normalX = 0f;
+                                        normalY = localY >= 0f ? 1f : -1f;
+                                        penetration = distToEdgeY + p.radius;
+                                    }
+                                }
+                                else
+                                {
+                                    // Center outside box — closest point on box surface.
+                                    float ddx = localX - clampedX;
+                                    float ddy = localY - clampedY;
+                                    float distSq = ddx * ddx + ddy * ddy;
+                                    float rSq = p.radius * p.radius;
+
+                                    if (distSq >= rSq || distSq < 1e-10f)
+                                        continue;
+
+                                    float invDist = math.rsqrt(distSq);
+                                    float dist = distSq * invDist;
+                                    normalX = ddx * invDist;
+                                    normalY = ddy * invDist;
+                                    penetration = p.radius - dist;
+                                }
+                                break;
+                            }
+
+                            case ObstacleShape.Capsule:
+                            {
+                                float dx = px - obs.center.x;
+                                float dy = py - obs.center.y;
+
+                                // Project onto capsule medial axis, clamp to segment
+                                float t = dx * obs.axisDirection.x + dy * obs.axisDirection.y;
+                                float halfH = obs.halfExtents.y;
+                                if (t < -halfH) t = -halfH;
+                                else if (t > halfH) t = halfH;
+
+                                // Closest point on axis → reduce to circle test
+                                float tpx = px - (obs.center.x + obs.axisDirection.x * t);
+                                float tpy = py - (obs.center.y + obs.axisDirection.y * t);
+                                float distSq = tpx * tpx + tpy * tpy;
+                                float minDist = obs.halfExtents.x + p.radius;
+
+                                if (distSq >= minDist * minDist || distSq < 1e-10f)
+                                    continue;
+
+                                float invDist = math.rsqrt(distSq);
+                                float dist = distSq * invDist;
+                                normalX = tpx * invDist;
+                                normalY = tpy * invDist;
+                                penetration = minDist - dist;
+                                break;
+                            }
+
+                            default:
+                                continue;
+                        }
+
+                        // ── Collision Response ──────────────────────
+
+                        // Capture velocity BEFORE position correction
+                        float velX = p.pos.x - p.prevPos.x;
+                        float velY = p.pos.y - p.prevPos.y;
+                        float normalVel = velX * normalX + velY * normalY;
+
+                        // Position correction — push particle out of obstacle
+                        p.pos.x += normalX * penetration;
+                        p.pos.y += normalY * penetration;
+
+                        // Restitution — reflect normal velocity via prevPos.
+                        // Only for incoming velocity (normalVel < 0 = approaching surface).
+                        // bounciness=0 → dead stop. bounciness=1 → full elastic reflect.
+                        if (normalVel < 0f)
+                        {
+                            float restitutionCorrection = normalVel * (1f + obs.bounciness);
+                            p.prevPos.x += normalX * restitutionCorrection;
+                            p.prevPos.y += normalY * restitutionCorrection;
+                        }
+
+                        // Coulomb friction — clamp tangent velocity by friction × penetration.
+                        float tangentVelX = velX - normalVel * normalX;
+                        float tangentVelY = velY - normalVel * normalY;
+                        float tangentLenSq = tangentVelX * tangentVelX + tangentVelY * tangentVelY;
+                        float maxFriction = obs.friction * penetration;
+
+                        if (tangentLenSq > maxFriction * maxFriction * FrictionDeadZoneFraction)
+                        {
+                            float tangentLen = math.sqrt(tangentLenSq);
+                            float correction = tangentLen < maxFriction ? tangentLen : maxFriction;
+                            float invTLen = 1f / tangentLen;
+                            p.prevPos.x += tangentVelX * invTLen * correction;
+                            p.prevPos.y += tangentVelY * invTLen * correction;
+                        }
+
+                        // Re-cache pos after correction for next obstacle test
+                        px = p.pos.x;
+                        py = p.pos.y;
+                    }
+
+                    particles[i] = p;
+                }
+            }
+        }
+
         // ── ResolveBoundariesJob ──────────────────────────────────────
 
         [BurstCompile(FloatMode = FloatMode.Fast)]
