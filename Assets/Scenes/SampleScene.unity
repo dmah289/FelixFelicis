@@ -1153,10 +1153,10 @@ MonoBehaviour:
   mode: 1
   maxParticles: 20000
   spawnRange: 2
-  streamRate: 1000
+  streamRate: 500
   streamSpawnWidth: 2
-  radiusMin: 0.01
-  radiusMax: 0.01
+  radiusMin: 0.015
+  radiusMax: 0.018
   gravity: {x: 0, y: -20}
   airDrag: 0.01
   frictionCoef: 0.3
@@ -1164,7 +1164,7 @@ MonoBehaviour:
   substeps: 3
   collisionIterations: 4
   slopeBias: 0.2
-  slopeFrictionReduction: 0.7
+  slopeFrictionReduction: 1
   sleepVelocityThreshold: 0.01
   sleepFrames: 30
   wakeOverlapFraction: 0.3
