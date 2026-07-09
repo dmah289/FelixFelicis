@@ -49,36 +49,23 @@ namespace FelixFelicis.ParticleRendering.Simulation
         public float DespawnBelowY => despawnBelowY;
 
         /// <summary>
-        /// Returns the baked segment array and count.
-        /// Bakes on first call if not already done (lazy init).
+        /// Returns the baked segment data. Must call <see cref="BakeWithMargin"/> first.
         /// </summary>
-        public (NativeArray<FunnelSegment> data, int count) GetSegments()
-        {
-            if (!isBaked) Bake();
-            return (segments, segmentCount);
-        }
+        public NativeArray<FunnelSegment> Segments => segments;
+
+        /// <summary>Baked segment count.</summary>
+        public int SegmentCount => segmentCount;
+
+        /// <summary>Whether segments have been baked.</summary>
+        public bool IsBaked => isBaked;
 
         /// <summary>
         /// Bakes segments with a precomputed broadphase margin.
         /// The margin must cover max particle displacement per substep to catch tunneling.
-        /// Called by <see cref="FallingSandSim"/> after computing the margin from physics params.
+        /// Called once by <see cref="FallingSandSim.Start"/> after computing the margin
+        /// from physics params. Re-bake is supported (disposes old data first).
         /// </summary>
         public void BakeWithMargin(float broadphaseMargin)
-        {
-            if (isBaked) Dispose();
-            BakeInternal(broadphaseMargin);
-        }
-
-        // ── Bake Implementation ───────────────────────────────────────
-
-        private void Bake()
-        {
-            // Default margin when baked lazily (no orchestrator context).
-            // Conservative fallback — orchestrator should call BakeWithMargin instead.
-            BakeInternal(0.2f);
-        }
-
-        private void BakeInternal(float broadphaseMargin)
         {
             if (leftWall == null || rightWall == null)
             {

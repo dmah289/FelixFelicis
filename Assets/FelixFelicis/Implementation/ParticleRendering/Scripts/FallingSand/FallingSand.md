@@ -612,6 +612,33 @@ Tight hơn bounding circle `√(hx² + hy²)` → ít false positive → ít nar
 
 ---
 
+### 2.9 Cached Properties — Zero Per-Frame Accessor Overhead
+
+Giá trị không đổi runtime được precompute tại `Start()` thay vì tính/đọc lại mỗi frame:
+
+| Giá trị | Trước | Sau |
+|---------|-------|-----|
+| Wake gravity nudge (`sqrt` + `normalize`) | Tính mỗi lần obstacle bị xóa | **`cachedWakeNudge`** precomputed ở `Start()` |
+| `funnel.Friction` | Property accessor mỗi substep | Cached vào `funnelFriction` local trước loop |
+| `funnel.DespawnBelowY` | Property accessor mỗi frame | Cached vào `despawnY` local trước loop |
+| `funnel.GetSegments()` tuple | Tuple return + unpack mỗi frame | Direct field access `funnel.Segments` + `funnel.SegmentCount` |
+| `SandObstacleRegistry.Register()` duplicate check | `List.Contains()` O(n) | **`HashSet.Add()`** O(1) |
+
+---
+
+### 2.10 Obstacle Registry — HashSet + List Dual Collection
+
+`SandObstacleRegistry` dùng **`HashSet<SandObstacle>` + `List<SandObstacle>`** song song:
+
+- `HashSet`: O(1) `Contains` / `Add` / `Remove` — guard duplicate registration
+- `List`: ordered iteration cho NativeArray packing (index-based `obstacles[i]`)
+
+Cả hai kept in sync: `Register` add vào cả hai, `Unregister` remove cả hai, `Dispose` clear cả hai.
+
+**Tại sao không chỉ HashSet?** `RebuildArray()` cần index-based iteration `for (int i = 0; i < count; i++)` để pack vào NativeArray. HashSet không hỗ trợ integer index.
+
+---
+
 ## 3. Thiết kế hệ thống
 
 ### 3.1 Dependency Graph
@@ -787,7 +814,9 @@ Simulation/
 | Funnel precompute savings | ~9.6M float ops/frame eliminated (AABB + edge + invLenSq + normal) |
 | Obstacle broadphase | Precomputed AABB (baked at register), OBB tight envelope |
 | Obstacle narrowphase | Circle (rsqrt), OBB (12 ops rotate), Capsule (dot+clamp+rsqrt) |
-| Data queries | 1×/frame hoisted outside substep loop (obstacles + funnel) |
+| Data queries | 1×/frame hoisted outside substep loop (obstacles + funnel), properties cached to locals |
+| Obstacle registry | HashSet O(1) duplicate check + List for indexed packing |
+| Wake nudge | Precomputed at Start — zero sqrt/normalize per removal event |
 | Burst compilation | 9 IJob total (8 in SandPhysics + 1 in FallingSandSim), FloatMode.Fast, auto-SIMD |
 | Fully settled | FixedUpdate ≈ 0, LateUpdate ≈ 0 |
 | GC in hot path | 0 |

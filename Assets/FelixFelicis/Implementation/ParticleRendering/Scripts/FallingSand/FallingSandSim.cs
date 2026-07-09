@@ -90,6 +90,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         private SandObstacleRegistry obstacleRegistry;
 
+        // Precomputed gravity nudge for WakeNearbyParticles — avoids
+        // recomputing sqrt + normalize on every obstacle removal event.
+        private float2 cachedWakeNudge;
+
         // Skip render upload when nothing moved (all sleeping, no spawns).
         private bool needsRenderUpload;
 
@@ -121,6 +125,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             sleepThresholdSqr = sleepVelocityThreshold * sleepVelocityThreshold;
             wakeSpeedSqr = wakeSpeed * wakeSpeed;
+
+            // Precompute gravity nudge for obstacle removal wake.
+            // Direction = opposite gravity (so implicit velocity points WITH gravity).
+            // Magnitude must exceed collision correction from pile neighbors.
+            float nudgeMag = Mathf.Max(radiusMax * 10f, sleepVelocityThreshold * 20f);
+            float gravLen = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
+            cachedWakeNudge = gravLen > 1e-6f
+                ? new float2(-gravity.x / gravLen * nudgeMag, -gravity.y / gravLen * nudgeMag)
+                : new float2(0f, nudgeMag);
 
             // Bake funnel segments once with precomputed broadphase margin.
             // Margin must cover max displacement per substep to catch tunneling.
@@ -187,14 +200,19 @@ namespace FelixFelicis.ParticleRendering.Simulation
             // Query obstacle + funnel data once per frame — both are static between substeps.
             var (obstacleData, obstacleCount) = obstacleRegistry.GetObstacleData();
 
-            // Funnel data is baked once at Start — query only the NativeArray reference.
+            // Funnel data is baked once at Start — cache locals to avoid
+            // property accessor calls inside the substep loop.
             var funnelSegments = default(NativeArray<FunnelSegment>);
             int funnelSegmentCount = 0;
-            if (funnel != null)
+            float funnelFriction = 0f;
+            float despawnY = float.NegativeInfinity;
+            bool hasFunnel = funnel != null && funnel.IsBaked;
+            if (hasFunnel)
             {
-                var funnelData = funnel.GetSegments();
-                funnelSegments = funnelData.data;
-                funnelSegmentCount = funnelData.count;
+                funnelSegments = funnel.Segments;
+                funnelSegmentCount = funnel.SegmentCount;
+                funnelFriction = funnel.Friction;
+                despawnY = funnel.DespawnBelowY;
             }
 
             for (int s = 0; s < substeps; s++)
@@ -295,14 +313,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         awakeCount = awakeCount,
                         segments = funnelSegments,
                         segmentCount = funnelSegmentCount,
-                        friction = funnel.Friction,
+                        friction = funnelFriction,
                     }.Schedule().Complete();
                 }
             }
 
             // Despawn particles below funnel spout (Burst job) — once per frame,
             // after all substeps. Teleport + sleep = zero ongoing cost.
-            if (funnel != null)
+            if (hasFunnel)
             {
                 new SandPhysics.DespawnOutOfBoundsJob
                 {
@@ -310,7 +328,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     activeIndices = activeIndices,
                     awakeCount = awakeCount,
                     isSleeping = isSleeping,
-                    despawnY = funnel.DespawnBelowY,
+                    despawnY = despawnY,
                 }.Schedule().Complete();
             }
 
@@ -454,22 +472,15 @@ namespace FelixFelicis.ParticleRendering.Simulation
         /// re-sleep as a floating cluster.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// Wakes sleeping particles within simulation bounds on obstacle removal.
+        /// Uses <see cref="cachedWakeNudge"/> (precomputed at Start) to break pile
+        /// equilibrium — no per-call sqrt/normalize.
+        /// </summary>
         private void WakeNearbyParticles()
         {
             float bound = spawnRange + 1f;
-
-            // Nudge = implicit velocity in gravity direction via prevPos shift.
-            // Must be large enough that collision corrections from overlapping
-            // neighbors cannot cancel it out in a single frame. Particles deep
-            // inside a pile receive corrections from ~27 neighbors, each up to
-            // ~2×radius×slopeBias ≈ 0.014 (radius=0.01). A 0.1-unit nudge
-            // dominates this and guarantees net downward displacement > sleepThreshold
-            // for many frames, preventing instant re-sleep.
-            float nudgeMag = Mathf.Max(radiusMax * 10f, sleepVelocityThreshold * 20f);
-            float gravLen = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
-            float2 nudge = gravLen > 1e-6f
-                ? new float2(-gravity.x / gravLen * nudgeMag, -gravity.y / gravLen * nudgeMag)
-                : new float2(0f, nudgeMag);
+            float2 nudge = cachedWakeNudge;
 
             for (int i = 0; i < spawnedCount; i++)
             {
@@ -484,9 +495,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
                 isSleeping[i] = false;
                 sleepCounters[i] = 0;
-
-                // Shift prevPos opposite to gravity → implicit velocity toward gravity.
-                // This breaks the static equilibrium of the sleeping pile.
                 p.prevPos = p.pos + nudge;
                 particles[i] = p;
             }

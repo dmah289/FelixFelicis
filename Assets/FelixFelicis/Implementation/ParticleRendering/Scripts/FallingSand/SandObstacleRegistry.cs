@@ -22,6 +22,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
     {
         private static SandObstacleRegistry instance;
 
+        // HashSet for O(1) Contains/Remove. List for index-based NativeArray packing.
+        // Both kept in sync — HashSet guards duplicates, List provides iteration order.
+        private readonly HashSet<SandObstacle> obstacleSet = new();
         private readonly List<SandObstacle> obstacles = new();
         private NativeArray<ObstacleData> dataArray;
         private int activeCount;
@@ -68,7 +71,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
         public static void Register(SandObstacle obstacle)
         {
             if (instance == null) return;
-            if (instance.obstacles.Contains(obstacle)) return;
+            if (!instance.obstacleSet.Add(obstacle)) return; // O(1) duplicate check
             instance.obstacles.Add(obstacle);
             instance.isDirty = true;
         }
@@ -81,8 +84,9 @@ namespace FelixFelicis.ParticleRendering.Simulation
         public static void Unregister(SandObstacle obstacle)
         {
             if (instance == null) return;
-            if (instance.obstacles.Remove(obstacle))
+            if (instance.obstacleSet.Remove(obstacle))
             {
+                instance.obstacles.Remove(obstacle);
                 instance.isDirty = true;
                 instance.ObstacleWasRemoved = true;
             }
@@ -151,6 +155,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
             disposed = true;
 
             if (dataArray.IsCreated) dataArray.Dispose();
+            obstacleSet.Clear();
             obstacles.Clear();
         }
     }

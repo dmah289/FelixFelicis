@@ -846,7 +846,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: com.FelixFelicis::FelixFelicis.ParticleRendering.Simulation.SandFunnel
   leftWall: {fileID: 173832590}
   rightWall: {fileID: 201408893}
-  friction: 0.05
+  friction: 0
   despawnBelowY: -12
 --- !u!1 &1705896788
 GameObject:
