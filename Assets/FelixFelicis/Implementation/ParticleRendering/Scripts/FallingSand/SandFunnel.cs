@@ -11,13 +11,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
     /// <para>
     /// The funnel is a static concave container: wide opening at the top,
     /// narrow spout at the bottom. Sand enters from above and exits through
-    /// the spout, where it despawns.
+    /// the spout, where it despawns below <see cref="despawnBelowY"/>.
     /// </para>
     /// <para>
-    /// Each wall's <c>EdgeCollider2D.points</c> are converted to consecutive
-    /// <see cref="FunnelSegment"/> entries with precomputed outward normals.
-    /// Left wall normals point right (into funnel interior);
-    /// right wall normals point left.
+    /// All per-segment derived quantities (edge direction, outward normal,
+    /// inverse length², broadphase AABB) are precomputed at bake time —
+    /// the Burst job does zero redundant math per particle.
     /// </para>
     /// </summary>
     public class SandFunnel : MonoBehaviour, IDisposable
@@ -40,11 +39,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
         [SerializeField]
         private float despawnBelowY = -12f;
 
-        [Header("Broadphase")]
-        [Tooltip("Must match FallingSandSim.radiusMax for correct collision detection.")]
-        [SerializeField]
-        private float particleRadiusMax = 0.12f;
-
         private NativeArray<FunnelSegment> segments;
         private int segmentCount;
         private bool isBaked;
@@ -53,11 +47,10 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         public float Friction => friction;
         public float DespawnBelowY => despawnBelowY;
-        public float ParticleRadiusMax => particleRadiusMax;
 
         /// <summary>
         /// Returns the baked segment array and count.
-        /// Bakes on first call if not already done.
+        /// Bakes on first call if not already done (lazy init).
         /// </summary>
         public (NativeArray<FunnelSegment> data, int count) GetSegments()
         {
@@ -66,14 +59,27 @@ namespace FelixFelicis.ParticleRendering.Simulation
         }
 
         /// <summary>
-        /// Converts <see cref="EdgeCollider2D.points"/> from both walls into
-        /// a packed <see cref="NativeArray{FunnelSegment}"/>.
-        /// Called once at startup — funnel is static.
+        /// Bakes segments with a precomputed broadphase margin.
+        /// The margin must cover max particle displacement per substep to catch tunneling.
+        /// Called by <see cref="FallingSandSim"/> after computing the margin from physics params.
         /// </summary>
-        public void Bake()
+        public void BakeWithMargin(float broadphaseMargin)
         {
-            if (isBaked) return;
+            if (isBaked) Dispose();
+            BakeInternal(broadphaseMargin);
+        }
 
+        // ── Bake Implementation ───────────────────────────────────────
+
+        private void Bake()
+        {
+            // Default margin when baked lazily (no orchestrator context).
+            // Conservative fallback — orchestrator should call BakeWithMargin instead.
+            BakeInternal(0.2f);
+        }
+
+        private void BakeInternal(float broadphaseMargin)
+        {
             if (leftWall == null || rightWall == null)
             {
                 Debug.LogError("[SandFunnel] Both leftWall and rightWall must be assigned.", this);
@@ -98,24 +104,22 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             int idx = 0;
 
-            // Left wall: outNormal points RIGHT (into funnel interior)
-            // For edge (a→b), right-hand normal = (dy, -dx) / |d|
+            // Left wall: outNormal points RIGHT (+X, into funnel interior)
             var leftTransform = leftWall.transform;
             for (int i = 0; i < leftSegCount; i++)
             {
                 var a = (float2)((Vector2)leftTransform.TransformPoint(leftPoints[i]));
                 var b = (float2)((Vector2)leftTransform.TransformPoint(leftPoints[i + 1]));
-                segments[idx++] = BuildSegment(a, b, isLeftWall: true);
+                segments[idx++] = BuildSegment(a, b, isLeftWall: true, broadphaseMargin);
             }
 
-            // Right wall: outNormal points LEFT (into funnel interior)
-            // For edge (a→b), left-hand normal = (-dy, dx) / |d|
+            // Right wall: outNormal points LEFT (-X, into funnel interior)
             var rightTransform = rightWall.transform;
             for (int i = 0; i < rightSegCount; i++)
             {
                 var a = (float2)((Vector2)rightTransform.TransformPoint(rightPoints[i]));
                 var b = (float2)((Vector2)rightTransform.TransformPoint(rightPoints[i + 1]));
-                segments[idx++] = BuildSegment(a, b, isLeftWall: false);
+                segments[idx++] = BuildSegment(a, b, isLeftWall: false, broadphaseMargin);
             }
 
             isBaked = true;
@@ -123,7 +127,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         // ── Segment Builder ───────────────────────────────────────────
 
-        private static FunnelSegment BuildSegment(float2 a, float2 b, bool isLeftWall)
+        private static FunnelSegment BuildSegment(float2 a, float2 b, bool isLeftWall, float margin)
         {
             float2 d = b - a;
             float lenSq = math.dot(d, d);
@@ -142,10 +146,16 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             float2 outNormal = math.normalizesafe(perp, new float2(0f, 1f));
 
+            // Precompute AABB expanded by broadphase margin
+            float2 segMin = math.min(a, b) - margin;
+            float2 segMax = math.max(a, b) + margin;
+
             return new FunnelSegment
             {
+                aabbMin = segMin,
+                aabbMax = segMax,
                 a = a,
-                b = b,
+                edge = d,
                 outNormal = outNormal,
                 invLenSq = lenSq > 1e-10f ? 1f / lenSq : 0f,
             };

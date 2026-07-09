@@ -23,7 +23,11 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         [Header("Spawn")]
         [SerializeField] private SpawnMode mode = SpawnMode.Burst;
+
+        [Tooltip("Burst mode: total particle count spawned at Start.\n" +
+                 "Stream mode: initial NativeArray capacity (grows automatically as needed).")]
         [SerializeField] private int maxParticles = 10000;
+
         [SerializeField] private float spawnRange = 10f;
 
         [Header("Stream Mode")]
@@ -70,8 +74,12 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private NativeReference<int> awakeCountRef;
         private NativeReference<bool> wakeOccurredRef;
 
-        /// <summary>Total particles spawned (including sleeping). Only increases.</summary>
+        /// <summary>Total particles spawned (including sleeping/despawned). Only increases.</summary>
         private int spawnedCount;
+
+        /// <summary>Current NativeArray capacity. Grows by doubling in Stream mode.</summary>
+        private int particleCapacity;
+
         private int awakeCount;
         private float streamAccumulator;
         private SpatialHash2D spatialHash;
@@ -90,10 +98,11 @@ namespace FelixFelicis.ParticleRendering.Simulation
             obstacleRegistry = new SandObstacleRegistry();
             SandObstacleRegistry.SetInstance(obstacleRegistry);
 
-            particles = new NativeArray<SandParticle>(maxParticles, Allocator.Persistent);
-            isSleeping = new NativeArray<bool>(maxParticles, Allocator.Persistent);
-            sleepCounters = new NativeArray<byte>(maxParticles, Allocator.Persistent);
-            activeIndices = new NativeArray<int>(maxParticles, Allocator.Persistent);
+            particleCapacity = maxParticles;
+            particles = new NativeArray<SandParticle>(particleCapacity, Allocator.Persistent);
+            isSleeping = new NativeArray<bool>(particleCapacity, Allocator.Persistent);
+            sleepCounters = new NativeArray<byte>(particleCapacity, Allocator.Persistent);
+            activeIndices = new NativeArray<int>(particleCapacity, Allocator.Persistent);
             awakeCountRef = new NativeReference<int>(Allocator.Persistent);
             wakeOccurredRef = new NativeReference<bool>(Allocator.Persistent);
             spawnedCount = 0;
@@ -112,6 +121,18 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
             sleepThresholdSqr = sleepVelocityThreshold * sleepVelocityThreshold;
             wakeSpeedSqr = wakeSpeed * wakeSpeed;
+
+            // Bake funnel segments once with precomputed broadphase margin.
+            // Margin must cover max displacement per substep to catch tunneling.
+            if (funnel != null)
+            {
+                float subDt = Time.fixedDeltaTime / substeps;
+                float gravMag = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
+                float vMax = Mathf.Sqrt(2f * gravMag * spawnRange);
+                float maxDisplacement = vMax * subDt + gravMag * subDt * subDt;
+                float funnelMargin = Mathf.Max(radiusMax, maxDisplacement);
+                funnel.BakeWithMargin(funnelMargin);
+            }
 
             if (mode == SpawnMode.Burst)
                 SpawnBurst();
@@ -166,23 +187,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
             // Query obstacle + funnel data once per frame — both are static between substeps.
             var (obstacleData, obstacleCount) = obstacleRegistry.GetObstacleData();
 
+            // Funnel data is baked once at Start — query only the NativeArray reference.
             var funnelSegments = default(NativeArray<FunnelSegment>);
             int funnelSegmentCount = 0;
-            float funnelBroadphaseMargin = 0f;
             if (funnel != null)
             {
                 var funnelData = funnel.GetSegments();
                 funnelSegments = funnelData.data;
                 funnelSegmentCount = funnelData.count;
-
-                // Broadphase margin must catch tunneled particles — expand by max
-                // displacement per substep, not just particle radius.
-                // v_max after falling spawnRange units: sqrt(2 × |gravity| × spawnRange)
-                // displacement_max = v_max × subDt + |gravity| × subDt²
-                float gravMag = Mathf.Sqrt(gravity.x * gravity.x + gravity.y * gravity.y);
-                float vMax = Mathf.Sqrt(2f * gravMag * spawnRange);
-                float maxDisplacement = vMax * subDt + gravMag * dtSqr;
-                funnelBroadphaseMargin = Mathf.Max(radiusMax, maxDisplacement);
             }
 
             for (int s = 0; s < substeps; s++)
@@ -273,6 +285,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 }
 
                 // Resolve funnel walls (Burst job) — final safety clamp per substep.
+                // AABB + edge + normal all precomputed at bake — job is pure narrowphase.
                 if (funnelSegmentCount > 0)
                 {
                     new SandPhysics.ResolveFunnelJob
@@ -283,7 +296,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         segments = funnelSegments,
                         segmentCount = funnelSegmentCount,
                         friction = funnel.Friction,
-                        broadphaseMargin = funnelBroadphaseMargin,
                     }.Schedule().Complete();
                 }
             }
@@ -371,31 +383,51 @@ namespace FelixFelicis.ParticleRendering.Simulation
                 SpawnParticle(RandomPositionInRange());
         }
 
+        /// <summary>
+        /// Stream mode: spawns particles continuously each FixedUpdate.
+        /// No upper cap — NativeArrays grow automatically as needed.
+        /// Despawn at funnel spout keeps the live count bounded in practice.
+        /// </summary>
         private void StreamSpawn()
         {
-            if (spawnedCount >= maxParticles) return;
-
             streamAccumulator += streamRate * Time.fixedDeltaTime;
-            int toSpawn = Mathf.Min((int)streamAccumulator, maxParticles - spawnedCount);
+            int toSpawn = (int)streamAccumulator;
 
             // Subtract integer part only — prevents float precision drift
             // from accumulating over long play sessions (hours on mobile).
             streamAccumulator -= toSpawn;
             if (streamAccumulator > streamRate) streamAccumulator = 0f;
 
+            if (toSpawn <= 0) return;
+
+            // Grow all parallel arrays if needed before spawning batch
+            EnsureParticleCapacity(spawnedCount + toSpawn);
+
             float topY = spawnRange - radiusMax;
 
             for (int i = 0; i < toSpawn; i++)
             {
                 float x = Random.Range(-streamSpawnWidth * 0.5f, streamSpawnWidth * 0.5f);
-                SpawnParticle(new float2(x, topY));
+                SpawnParticleUnchecked(new float2(x, topY));
             }
         }
 
+        /// <summary>
+        /// Spawns a particle with capacity check. Used by Burst mode (fixed count).
+        /// </summary>
         private void SpawnParticle(float2 position)
         {
-            if (spawnedCount >= maxParticles) return;
+            if (spawnedCount >= particleCapacity) return;
+            SpawnParticleUnchecked(position);
+        }
 
+        /// <summary>
+        /// Spawns a particle without capacity check — caller must ensure
+        /// <see cref="EnsureParticleCapacity"/> was called first.
+        /// Used by Stream mode after pre-growing arrays for the entire batch.
+        /// </summary>
+        private void SpawnParticleUnchecked(float2 position)
+        {
             particles[spawnedCount] = new SandParticle
             {
                 pos = position,
@@ -460,6 +492,46 @@ namespace FelixFelicis.ParticleRendering.Simulation
             }
 
             needsRenderUpload = true;
+        }
+
+        /// <summary>
+        /// Grows all parallel particle arrays if <paramref name="requiredCount"/> exceeds
+        /// current capacity. Doubles capacity to amortize allocation cost — same pattern
+        /// as <see cref="SpatialHash2D.EnsureCapacity"/>.
+        /// <para>
+        /// Copies existing data to the new arrays and disposes the old ones.
+        /// Only called in Stream mode — Burst mode allocates exactly <c>maxParticles</c> once.
+        /// </para>
+        /// </summary>
+        private void EnsureParticleCapacity(int requiredCount)
+        {
+            if (requiredCount <= particleCapacity) return;
+
+            int newCapacity = particleCapacity;
+            while (newCapacity < requiredCount)
+                newCapacity *= 2;
+
+            particles = GrowArray(particles, spawnedCount, newCapacity);
+            isSleeping = GrowArray(isSleeping, spawnedCount, newCapacity);
+            sleepCounters = GrowArray(sleepCounters, spawnedCount, newCapacity);
+            activeIndices = GrowArray(activeIndices, spawnedCount, newCapacity);
+
+            particleCapacity = newCapacity;
+        }
+
+        /// <summary>
+        /// Allocates a new <see cref="NativeArray{T}"/> with <paramref name="newCapacity"/>,
+        /// copies the first <paramref name="usedCount"/> elements, and disposes the old array.
+        /// </summary>
+        private static NativeArray<T> GrowArray<T>(NativeArray<T> old, int usedCount, int newCapacity)
+            where T : struct
+        {
+            var grown = new NativeArray<T>(newCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            if (old.IsCreated && usedCount > 0)
+                NativeArray<T>.Copy(old, grown, usedCount);
+            if (old.IsCreated)
+                old.Dispose();
+            return grown;
         }
 
         private float2 RandomPositionInRange()

@@ -614,18 +614,14 @@ namespace FelixFelicis.ParticleRendering.Simulation
 
         /// <summary>
         /// Resolves particle ↔ funnel wall collisions.
-        /// Replaces <c>ResolveBoundariesJob</c> — funnel edges are arbitrary 2D segments
-        /// instead of axis-aligned walls.
         /// <para>
         /// Uses <b>signed distance</b> from the precomputed outward normal to detect
-        /// both proximity collisions AND full tunneling (particle crossed to the wrong
-        /// side of the wall in one substep). This is critical for small particles
-        /// (radius 0.01) with high gravity — displacement per substep can exceed
-        /// 2× particle diameter, causing standard overlap-only checks to miss.
+        /// both proximity collisions AND tunneling (particle crossed to the wrong
+        /// side of the wall in one substep). Critical for small particles with high gravity.
         /// </para>
         /// <para>
-        /// Funnel friction is intentionally low (~0.05) so sand slides fast
-        /// down the inclined walls toward the narrow spout.
+        /// All per-segment derived data (AABB, edge direction, outward normal, inverse length²)
+        /// is precomputed at bake time — the inner loop does zero redundant derivations.
         /// </para>
         /// </summary>
         [BurstCompile(FloatMode = FloatMode.Fast)]
@@ -639,18 +635,8 @@ namespace FelixFelicis.ParticleRendering.Simulation
             public int segmentCount;
             public float friction;
 
-            /// <summary>
-            /// Broadphase expansion margin around each segment AABB.
-            /// Must be large enough to catch tunneled particles — set to
-            /// max expected displacement per substep (not just particle radius).
-            /// Passed in by the orchestrator as <c>max(particleRadiusMax, maxDisplacementPerSubstep)</c>.
-            /// </summary>
-            public float broadphaseMargin;
-
             public void Execute()
             {
-                float margin = broadphaseMargin;
-
                 for (int a = 0; a < awakeCount; a++)
                 {
                     int i = activeIndices[a];
@@ -663,64 +649,49 @@ namespace FelixFelicis.ParticleRendering.Simulation
                     {
                         var seg = segments[s];
 
-                        // ── Broadphase: inline AABB from segment endpoints ──
-                        // Expanded by broadphaseMargin — must cover max tunneling distance,
-                        // not just particle radius.
-                        float segMinX = (seg.a.x < seg.b.x ? seg.a.x : seg.b.x) - margin;
-                        float segMaxX = (seg.a.x > seg.b.x ? seg.a.x : seg.b.x) + margin;
-                        float segMinY = (seg.a.y < seg.b.y ? seg.a.y : seg.b.y) - margin;
-                        float segMaxY = (seg.a.y > seg.b.y ? seg.a.y : seg.b.y) + margin;
-
-                        if (px < segMinX || px > segMaxX || py < segMinY || py > segMaxY)
+                        // ── Broadphase: precomputed AABB (expanded at bake time) ──
+                        if (px < seg.aabbMin.x || px > seg.aabbMax.x ||
+                            py < seg.aabbMin.y || py > seg.aabbMax.y)
                             continue;
 
-                        // ── Closest point on segment ──
-                        float abx = seg.b.x - seg.a.x;
-                        float aby = seg.b.y - seg.a.y;
+                        // ── Closest point on segment (precomputed edge + invLenSq) ──
                         float apx = px - seg.a.x;
                         float apy = py - seg.a.y;
 
-                        float t = (apx * abx + apy * aby) * seg.invLenSq;
+                        float t = (apx * seg.edge.x + apy * seg.edge.y) * seg.invLenSq;
                         if (t < 0f) t = 0f;
                         else if (t > 1f) t = 1f;
 
-                        float closestX = seg.a.x + abx * t;
-                        float closestY = seg.a.y + aby * t;
-
-                        float dx = px - closestX;
-                        float dy = py - closestY;
+                        float dx = apx - seg.edge.x * t;
+                        float dy = apy - seg.edge.y * t;
                         float distSq = dx * dx + dy * dy;
 
                         // ── Signed distance from wall surface ──
-                        // signedDist > 0: particle is on the interior (correct) side
-                        // signedDist < 0: particle has TUNNELED through the wall
-                        // signedDist ∈ [0, r]: particle overlaps the wall surface
+                        // signedDist > 0: particle on interior (correct) side
+                        // signedDist < 0: particle TUNNELED through the wall
                         float signedDist = dx * seg.outNormal.x + dy * seg.outNormal.y;
 
-                        // Skip if safely on the correct side beyond particle radius
                         if (signedDist > r)
                             continue;
 
-                        // Skip if too far from the segment line (endpoint region, no collision)
-                        // But only skip if we haven't tunneled (signedDist >= 0)
+                        // No tunnel and no overlap → skip
                         if (signedDist >= 0f && distSq >= r * r)
                             continue;
 
-                        // ── Compute penetration + collision normal ──
+                        // ── Penetration + normal ──
                         float penetration;
                         float normalX, normalY;
 
                         if (signedDist < 0f)
                         {
-                            // TUNNELED: particle crossed to the wrong side.
-                            // Push back along outNormal by (radius - signedDist).
+                            // TUNNELED — push back along precomputed outNormal
                             normalX = seg.outNormal.x;
                             normalY = seg.outNormal.y;
                             penetration = r - signedDist;
                         }
                         else if (distSq > 1e-10f)
                         {
-                            // Normal overlap: push along closest-point → particle direction
+                            // Normal overlap — push along closest-point → particle
                             float invDist = math.rsqrt(distSq);
                             normalX = dx * invDist;
                             normalY = dy * invDist;
@@ -728,7 +699,7 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         }
                         else
                         {
-                            // Degenerate: particle exactly on the segment line
+                            // Degenerate — fallback to outNormal
                             normalX = seg.outNormal.x;
                             normalY = seg.outNormal.y;
                             penetration = r;
@@ -737,24 +708,21 @@ namespace FelixFelicis.ParticleRendering.Simulation
                         if (penetration <= 0f)
                             continue;
 
-                        // ── Collision response ──
+                        // ── Collision response (dead stop + Coulomb friction) ──
 
                         float velX = p.pos.x - p.prevPos.x;
                         float velY = p.pos.y - p.prevPos.y;
                         float normalVel = velX * normalX + velY * normalY;
 
-                        // Position correction — push out of wall
                         p.pos.x += normalX * penetration;
                         p.pos.y += normalY * penetration;
 
-                        // Dead stop along normal (bounciness = 0 for funnel walls)
                         if (normalVel < 0f)
                         {
                             p.prevPos.x += normalX * normalVel;
                             p.prevPos.y += normalY * normalVel;
                         }
 
-                        // Coulomb friction — low friction lets sand slide down inclined walls
                         float tangentVelX = velX - normalVel * normalX;
                         float tangentVelY = velY - normalVel * normalY;
                         float tangentLenSq = tangentVelX * tangentVelX + tangentVelY * tangentVelY;
@@ -769,7 +737,6 @@ namespace FelixFelicis.ParticleRendering.Simulation
                             p.prevPos.y += tangentVelY * invTLen * correction;
                         }
 
-                        // Re-cache pos for next segment
                         px = p.pos.x;
                         py = p.pos.y;
                     }

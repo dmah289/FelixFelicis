@@ -4,40 +4,51 @@ using Unity.Mathematics;
 namespace FelixFelicis.ParticleRendering.Simulation
 {
     /// <summary>
-    /// One edge segment of a funnel wall, precomputed at bake time.
+    /// One edge segment of a funnel wall, fully precomputed at bake time.
     /// Used by <see cref="SandPhysics.ResolveFunnelJob"/> for particle ↔ wall collision.
     /// <para>
-    /// 32 bytes — exactly 2 structs per 64-byte cache line, no straddling.
-    /// Sequential scan of 100 segments fits in ~50 cache lines.
+    /// All derived quantities (edge direction, AABB, inverse length²) are baked once
+    /// to eliminate redundant per-particle math in the hot loop.
     /// </para>
     /// <para>
-    /// <c>outNormal</c> points outward from the funnel interior.
-    /// Convention: particles with <c>dot(pos - a, outNormal) &gt; radius</c>
-    /// are on the safe (outside) side — no collision needed.
+    /// <c>outNormal</c> points away from the funnel interior toward the outside.
+    /// Particles on the interior side satisfy <c>dot(pos - a, outNormal) &lt; radius</c>.
     /// </para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct FunnelSegment
     {
+        // ── Broadphase (checked first for early rejection) ────────
+
+        /// <summary>Precomputed AABB min corner, expanded by broadphase margin at bake time.</summary>
+        public float2 aabbMin;
+
+        /// <summary>Precomputed AABB max corner, expanded by broadphase margin at bake time.</summary>
+        public float2 aabbMax;
+
+        // ── Narrowphase geometry ──────────────────────────────────
+
         /// <summary>Segment start point in world XY.</summary>
         public float2 a;
 
-        /// <summary>Segment end point in world XY.</summary>
-        public float2 b;
+        /// <summary>Precomputed edge direction <c>b - a</c>. Avoids recomputing per particle.</summary>
+        public float2 edge;
 
         /// <summary>
         /// Unit outward normal (perpendicular to edge, pointing away from funnel interior).
-        /// Precomputed at bake time to avoid per-particle normalize in the hot loop.
+        /// Precomputed at bake time to avoid per-particle normalize.
         /// </summary>
         public float2 outNormal;
 
         /// <summary>
-        /// Precomputed <c>1 / lengthSq(b - a)</c>.
-        /// Used for segment projection: <c>t = dot(p - a, b - a) * invLenSq</c>
+        /// Precomputed <c>1 / dot(edge, edge)</c>.
+        /// Used for segment projection: <c>t = dot(p - a, edge) * invLenSq</c>
         /// avoids a division per particle in the inner loop.
         /// </summary>
         public float invLenSq;
 
-        // 4B padding to reach 32B (power-of-2, 2/cache line)
+        // Total: 5×8 + 4 = 44 bytes.
+        // Broadphase AABB fields at struct top → reject path only needs
+        // first 16B (within same cache line prefetch).
     }
 }

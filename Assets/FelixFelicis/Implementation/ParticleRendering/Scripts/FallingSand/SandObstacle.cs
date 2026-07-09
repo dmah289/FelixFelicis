@@ -1,6 +1,7 @@
 using Cysharp.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace FelixFelicis.ParticleRendering.Simulation
 {
@@ -22,6 +23,8 @@ namespace FelixFelicis.ParticleRendering.Simulation
     [RequireComponent(typeof(Collider))]
     public class SandObstacle : MonoBehaviour
     {
+        [SerializeField] private bool canDisable;
+        
         [Header("Surface Properties")]
         [SerializeField, Range(0f, 2f)]
         private float friction = 0.3f;
@@ -46,13 +49,13 @@ namespace FelixFelicis.ParticleRendering.Simulation
         private void Awake()
         {
             attachedCollider = DetectCollider();
-
-            CountdownDisable();
+            if(canDisable)
+                CountDownDisable();
         }
-        
-        private async UniTask CountdownDisable() 
+
+        private async UniTask CountDownDisable()
         {
-            await UniTask.Delay(3000);
+            await UniTask.Delay(Random.Range(5000, 7000));
             gameObject.SetActive(false);
         }
 
