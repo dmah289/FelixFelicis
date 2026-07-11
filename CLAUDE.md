@@ -3,20 +3,46 @@
 ## Dependencies
 
 - **Horcrux SDK** — git submodule `Assets/Horcrux`, design guide: `Assets/Horcrux/SKILL.md`
-- **Init(args)** — DI via `[Service]` + `MonoBehaviour<TDep>`
-- **UniTask** — async/await, not coroutines; always pass `CancellationToken`
-- **Addressables** — load via `AssetReference`; track handles for `Release()`
+- **Init(args)** — DI via `[Service]` + `MonoBehaviour<TDep>`. Runtime assemblies only
+- **UniTask** — async/await, not coroutines. Always propagate `CancellationToken`
+- **Addressables** — load via `AssetReference`, track handles for `Release()`
 
 ## Design Principles
 
-Apply to all code: runtime, editor, utilities.
+Áp dụng cho **tất cả** code: runtime, editor, utilities. Không có ngoại lệ trừ khi ghi rõ.
 
-**SOLID** — S: one responsibility per class. O: extend, don't modify. L: subtypes substitutable. I: small interfaces. D: depend on abstractions; use InitArgs (`Sisus.Init`) for DI in runtime assemblies.
+### SOLID — tuyệt đối tuân thủ
 
-**Zero GC in hot paths** — pre-allocate collections, reuse buffers, prefer `struct`/`ref`/`Span<T>`. Cache `GUIContent`/`GUIStyle`/delegates as `static readonly` or lazy-init (`EnsureStyles()`). Pool objects instead of Instantiate/Destroy.
+- **S**: 1 class = 1 responsibility. Tách khi class có >1 lý do thay đổi
+- **O**: Extend, don't modify. Thiết kế cho mở rộng (interface, abstract, strategy)
+- **L**: Subtypes thay thế được base mà không break behavior
+- **I**: Interface nhỏ, tách theo consumer. Không ép client phụ thuộc method không dùng
+- **D**: Depend on abstractions. **Runtime**: dùng InitArgs (`Sisus.Init`) cho DI. **Editor**: không bắt buộc InitArgs, constructor injection hoặc static factory OK
 
-**Cache over recompute** — dirty flags, event-driven rebuilds, pre-built lookup dictionaries. Heavy work in event handlers, never in `Update`/polling loops.
+### Hiệu năng — tuyệt đối tối ưu
 
-**Naming** — methods convey purpose without comments. No `Process`/`Handle`/`DoWork`. Booleans read as questions: `IsPickable`, `HasCars`.
+**Zero GC in hot paths:**
+- Pre-allocate collections, reuse buffers. `struct`/`ref`/`Span<T>` over `class` khi hợp lý
+- Cache `GUIContent`/`GUIStyle`/delegates: `static readonly` hoặc lazy-init (`EnsureStyles()`)
+- Pool objects thay vì Instantiate/Destroy. Grow-only buffers khi size dao động
 
-**Async** — UniTask only. Always propagate `CancellationToken`. Addressables via `AssetReference`, not string keys.
+**Tối ưu tính toán:**
+- Cache over recompute — dirty flags, event-driven rebuilds, pre-built lookup dictionaries
+- Heavy work trong event handlers, **tuyệt đối không** trong `Update`/polling loops
+- Tách static vs dynamic — phần không đổi tính 1 lần, phần thay đổi tính incremental
+
+**Tối ưu bộ nhớ:**
+- NativeArray/NativeList (unmanaged) cho data lớn cần truyền GPU hoặc Job System
+- `StructLayout(Sequential)` khi struct phải khớp layout với GPU/native
+- Không allocate trong hot path: không `new`, không LINQ, không string concat, không closure capture
+
+### Naming — self-documenting code
+
+- Methods convey purpose: `EnsureMaterial()`, `SwapWriteBuffer()`. Không `Process`/`Handle`/`DoWork`
+- Booleans read as questions: `IsPickable`, `HasCars`, `frameDataReady`
+- Code tự giải thích → comment chỉ khi giải thích **tại sao**, không giải thích **cái gì**
+
+### Async
+
+- UniTask only. Always propagate `CancellationToken`
+- Addressables via `AssetReference`, not string keys

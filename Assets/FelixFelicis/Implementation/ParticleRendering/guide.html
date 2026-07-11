@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation Guide: Particle Rendering</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--bg4:#242d3a;
+  --tx:#e6edf3;--tx2:#8b949e;--tx3:#484f58;
+  --ac:#58a6ff;--ac2:#bc8cff;--gr:#3fb950;--or:#d29922;--rd:#f85149;
+  --bd:#30363d;--r:10px;
+  --mono:'JetBrains Mono','Fira Code','Cascadia Code','SF Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+}
+html{scroll-behavior:smooth;background:var(--bg);color:var(--tx);font:17px/1.7 var(--sans)}
+body{overflow-x:hidden}
+a{color:var(--ac);text-decoration:none}a:hover{text-decoration:underline}
+#progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--ac),var(--ac2));width:0;z-index:999;transition:width .1s}
+#header{max-width:920px;margin:0 auto;padding:4rem 1.5rem 2rem;border-bottom:1px solid var(--bd)}
+#header h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-.03em;background:linear-gradient(135deg,var(--ac),var(--ac2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#header .sub{font-size:1.05rem;color:var(--tx2);margin-top:.4rem}
+#header .badge{display:inline-block;margin-top:.8rem;padding:.3em .9em;border:1px solid var(--bd);border-radius:99px;font-family:var(--mono);font-size:.78rem;color:var(--tx2)}
+main{max-width:920px;margin:0 auto;padding:0 1.5rem 6rem}
+section{padding-top:4rem}
+section .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+section .reveal.visible{opacity:1;transform:none}
+#toc{max-width:920px;margin:3rem auto;padding:0 1.5rem}
+#toc h2{font-size:1.3rem}
+#toc ol{columns:2;column-gap:2rem;padding-left:1.5em}
+#toc li{font-size:.92rem;margin-bottom:.3rem;break-inside:avoid}
+@media(max-width:600px){#toc ol{columns:1}}
+h2{font-size:1.9rem;font-weight:700;letter-spacing:-.02em;margin-bottom:1.5rem;padding-bottom:.5rem;border-bottom:1px solid var(--bd)}
+h3{font-size:1.3rem;font-weight:600;margin:2.5rem 0 1rem;color:var(--ac)}
+p,ul,ol{margin-bottom:1rem}
+ul{padding-left:1.3em}li{margin-bottom:.3rem}
+strong{color:var(--tx);font-weight:600}
+em{color:var(--ac2);font-style:normal}
+code{font-family:var(--mono);font-size:.88em;background:var(--bg3);padding:.15em .4em;border-radius:4px}
+pre{margin:1.2rem 0!important;border-radius:var(--r)!important;border:1px solid var(--bd)!important}
+pre code{background:none!important;padding:0!important;font-size:.85rem!important;line-height:1.6!important}
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:1.5rem;margin:1.5rem 0}
+.card-title{font-weight:600;margin-bottom:.75rem;font-size:1.05rem;color:var(--ac)}
+.note{border-left:3px solid var(--or);background:var(--bg2);padding:1rem 1.2rem;border-radius:0 var(--r) var(--r) 0;margin:1.5rem 0;font-size:.92rem;color:var(--tx2)}
+.note strong{color:var(--or)}
+table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.92rem}
+th{text-align:left;padding:.6rem .8rem;border-bottom:2px solid var(--bd);color:var(--ac);font-weight:600}
+td{padding:.5rem .8rem;border-bottom:1px solid var(--bd)}
+tr:last-child td{border:none}
+.arch{font-family:var(--mono);font-size:.82rem;line-height:1.8;white-space:pre;overflow-x:auto;padding:1rem;background:var(--bg3);border-radius:var(--r);color:var(--tx2)}
+.arch em{color:var(--ac);font-style:normal}
+.perf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0}
+.perf-card{background:var(--bg3);border-radius:var(--r);padding:1.2rem;text-align:center}
+.perf-val{font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,var(--ac),var(--ac2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.perf-label{font-size:.82rem;color:var(--tx2);margin-top:.2rem}
+.step-num{display:inline-block;width:2rem;height:2rem;line-height:2rem;text-align:center;border-radius:50%;background:var(--ac);color:var(--bg);font-weight:700;font-size:.9rem;margin-right:.5rem;vertical-align:middle}
+footer{text-align:center;padding:3rem 1rem;color:var(--tx3);font-size:.85rem;border-top:1px solid var(--bd)}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<header id="header">
+  <h1>Implementation Guide</h1>
+  <p class="sub">Particle Rendering — triển khai từ đầu, từng bước</p>
+  <span class="badge">11 steps · 11 files · 1 draw call</span>
+</header>
+
+<nav id="toc">
+  <h2>Mục lục</h2>
+  <ol>
+    <li><a href="#s0">Tổng quan hệ thống</a></li>
+    <li><a href="#s1">Data struct — ParticleRenderData</a></li>
+    <li><a href="#s2">Quad mesh — QuadMeshHelper</a></li>
+    <li><a href="#s3">Shader — ParticleDraw + SpaceTransformHelper</a></li>
+    <li><a href="#s4">Core drawer — ParticleDrawer</a></li>
+    <li><a href="#s5">Interfaces — IInstanceWriter + IInstanceDrawer</a></li>
+    <li><a href="#s6">Static bridge — ParticleProvider</a></li>
+    <li><a href="#s7">URP Feature — ParticleRendererFeature</a></li>
+    <li><a href="#s8">URP Pass — ParticleRenderPass</a></li>
+    <li><a href="#s9">Debug sim — ParticleDebugSim</a></li>
+    <li><a href="#s10">Runtime flow — khi nhấn Play</a></li>
+    <li><a href="#s11">Kiểm thử + Vulkan fixes</a></li>
+    <li><a href="#s12">Tóm tắt</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ═══════════════════ STEP 0 ═══════════════════════ -->
+<section id="s0">
+<h2 class="reveal"><span class="step-num">0</span> Tổng quan hệ thống</h2>
+
+<div class="reveal">
+<p><strong>Mục tiêu:</strong> Vẽ hàng nghìn particle circles trên GPU trong <strong>1 draw call</strong> duy nhất, sử dụng GPU Instancing + SDF + NativeArray, tích hợp URP RenderGraph (Unity 6).</p>
+</div>
+
+<div class="note reveal">
+  <strong>Cách đọc guide này:</strong> Guide hướng dẫn <em>tạo file nào, theo thứ tự nào, code gì</em>. Lý thuyết chỉ giải thích vừa đủ để triển khai. Để hiểu sâu bản chất toán học (SDF, fwidth, smoothstep), cơ chế hardware (GPU Instancing, double buffer, cache coherence), và trade-off thiết kế — xem <strong>ParticleRendering.html</strong> (docs lý thuyết đầy đủ, cùng thư mục <code>Implementation/ParticleRendering/</code>).
+</div>
+
+<h3 class="reveal">Checkpoint: khi nào test được?</h3>
+<div class="reveal">
+<table>
+  <tr><th>Sau step</th><th>Có thể test?</th><th>Tại sao</th></tr>
+  <tr><td>Step 1–8</td><td>❌ Chưa</td><td>Chưa có simulation ghi data vào pipeline</td></tr>
+  <tr><td><strong>Step 9</strong></td><td>✅ <strong>Test lần đầu</strong></td><td>Debug sim ghi particles → pipeline hoàn chỉnh → nhấn Play thấy circles</td></tr>
+  <tr><td>Step 10</td><td>✅ Full test</td><td>8 test cases + APK build</td></tr>
+</table>
+</div>
+
+<h3 class="reveal">Kiến trúc</h3>
+<div class="reveal">
+<div class="arch"><em>ParticleRendererFeature</em> (composition root)
+  ├── creates ──► <em>ParticleDrawer</em> ◄── implements ── IInstanceWriter&lt;T&gt;
+  │                    ▲                            IInstanceDrawer
+  │                    │                            IDisposable
+  ├── creates ──► <em>ParticleRenderPass</em>
+  │                    └── depends on ──► IInstanceDrawer (interface only)
+  │
+  └── registers ──► <em>ParticleProvider</em> (static bridge)
+                       ├── .Writer ──► IInstanceWriter&lt;T&gt; ◄── Simulation
+                       └── .Drawer ──► IInstanceDrawer    ◄── RenderPass</div>
+</div>
+
+<h3 class="reveal">Data flow mỗi frame</h3>
+<div class="reveal">
+<div class="card">
+<pre style="background:none!important;border:none!important;padding:0!important;margin:0!important;font-size:.82rem!important"><code class="language-csharp">Update()                                   Render (per camera)
+────────────────────────────────────       ────────────────────────
+
+BeginFrame(count)                          Draw(cmd, cam)
+  frameDataReady = false                     skip if !frameDataReady
+  swap writeIndex                            cmd.SetGlobalBuffer(InstanceData)
+  ensure GPU buffer capacity                 cmd.SetGlobalVector(ScreenSize)
+  ensure CPU staging capacity                cmd.SetGlobalMatrix(VP matrix)
+  return cpuStaging NativeArray              DrawMeshInstancedIndirect
+
+nativeArray[i] = {center, radius, color}
+         ↑ sim ghi thẳng vào staging
+
+EndFrame(count)
+  SetData(nativeArray → GPU buffer)
+  update argsBuffer (if count changed)
+  frameDataReady = true</code></pre>
+</div>
+</div>
+
+<h3 class="reveal">File structure</h3>
+<div class="reveal">
+<div class="arch">ParticleRendering/
+├─ Resources/
+│   ├─ <em>ParticleDraw.shader</em>             ← Step 3
+│   └─ <em>SpaceTransformHelper.hlsl</em>       ← Step 3
+└─ Scripts/
+    ├─ <em>ParticleRenderData.cs</em>           ← Step 1
+    ├─ <em>QuadMeshHelper.cs</em>              ← Step 2
+    ├─ <em>IInstanceWriter.cs</em>              ← Step 5
+    ├─ <em>IInstanceDrawer.cs</em>              ← Step 5
+    ├─ <em>ParticleDrawer.cs</em>              ← Step 4
+    ├─ <em>ParticleProvider.cs</em>            ← Step 6
+    ├─ <em>ParticleRendererFeature.cs</em>     ← Step 7
+    ├─ <em>ParticleRenderPass.cs</em>          ← Step 8
+    └─ <em>ParticleDebugSim.cs</em>            ← Step 9</div>
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 1 ═══════════════════════ -->
+<section id="s1">
+<h2 class="reveal"><span class="step-num">1</span> Data struct — ParticleRenderData.cs</h2>
+
+<div class="reveal">
+<p>Mỗi particle = 1 struct <strong>16 bytes</strong>. C# layout phải khớp byte-by-byte với HLSL struct.</p>
+
+<table>
+  <tr><th>Field</th><th>C# Type</th><th>HLSL Type</th><th>Size</th></tr>
+  <tr><td>center</td><td>Vector2</td><td>float2</td><td>8B</td></tr>
+  <tr><td>radius</td><td>float</td><td>float</td><td>4B</td></tr>
+  <tr><td>packedColor</td><td>uint</td><td>uint</td><td>4B</td></tr>
+  <tr><td colspan="3"><strong>Total</strong></td><td><strong>16B</strong></td></tr>
+</table>
+
+<p>16 bytes = power-of-2 → GPU cache line (64/128B) chứa đúng 4/8 particles. Color pack từ 16B (<code>Color</code>) xuống 4B (<code>uint</code>) bằng bit-shift: <code>(R | G&lt;&lt;8 | B&lt;&lt;16 | A&lt;&lt;24)</code>.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using System.Runtime.InteropServices;
+using UnityEngine;
+
+namespace FelixFelicis.ParticleRendering
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ParticleRenderData
+    {
+        public Vector2 center;
+        public float radius;
+        public uint packedColor;
+
+        public static uint PackColor(Color color)
+        {
+            Color32 c = color;  // implicit clamp [0,1] → [0,255]
+            return (uint)(c.r | (c.g &lt;&lt; 8) | (c.b &lt;&lt; 16) | (c.a &lt;&lt; 24));
+        }
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>StructLayout(Sequential)</strong> ngăn C# compiler sắp xếp lại thứ tự trường. Nếu thứ tự lệch với HLSL → GPU đọc sai offset → visual corruption. <em>Xem ParticleRendering.html §1</em> để hiểu color packing byte layout chi tiết.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 2 ═══════════════════════ -->
+<section id="s2">
+<h2 class="reveal"><span class="step-num">2</span> Quad mesh — QuadMeshHelper.cs</h2>
+
+<div class="reveal">
+<p>GPU Instancing vẽ cùng 1 mesh N lần. Mỗi particle dùng 1 <strong>quad</strong> (4 vertices) — vertex shader scale + position per-instance. Fragment shader dùng SDF quyết định pixel nào thuộc circle.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using UnityEngine;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public static class QuadMeshHelper
+    {
+        public static Mesh CreateQuadMesh()
+        {
+            var mesh = new Mesh { name = "ParticleQuad" };
+
+            mesh.SetVertices(new Vector3[]
+            {
+                new (-0.5f,  0.5f, 0),  // top-left
+                new ( 0.5f,  0.5f, 0),  // top-right
+                new (-0.5f, -0.5f, 0),  // bottom-left
+                new ( 0.5f, -0.5f, 0),  // bottom-right
+            });
+            mesh.SetTriangles(new[] { 0, 1, 2, 2, 1, 3 }, 0, true);
+
+            // Giải phóng CPU copy — mesh tĩnh, chỉ GPU cần
+            mesh.UploadMeshData(true);
+
+            return mesh;
+        }
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>UploadMeshData(true)</strong> đánh dấu mesh không thể đọc lại từ CPU — Unity giải phóng managed copy, chỉ giữ GPU-side data.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 3 ═══════════════════════ -->
+<section id="s3">
+<h2 class="reveal"><span class="step-num">3</span> Shader — ParticleDraw + SpaceTransformHelper</h2>
+
+<div class="reveal">
+<p>Đặt cả 2 file vào folder <code>Resources/</code> (cùng cấp với <code>Scripts/</code>). Shader load qua <code>Resources.Load&lt;Shader&gt;("ParticleDraw")</code> — guaranteed included trong build.</p>
+</div>
+
+<h3 class="reveal">Resources/SpaceTransformHelper.hlsl</h3>
+<div class="reveal">
+<pre><code class="language-glsl">#ifndef SPACE_TRANSFORM_HELPER_INCLUDED
+#define SPACE_TRANSFORM_HELPER_INCLUDED
+
+// CBUFFER explicit — bắt buộc cho Vulkan SPIR-V.
+// D3D11 tự gom loose globals vào $Globals, Vulkan không có cơ chế đó.
+CBUFFER_START(ParticleUniforms)
+    float4x4 WorldToClipSpace;   // VP matrix, per-camera
+    float2 ScreenSize;           // viewport size
+    int useScreenSpace;          // 0 = world, ≠0 = screen
+    uint InstanceOffset;         // offset vào StructuredBuffer
+CBUFFER_END
+
+float4 WorldToClipPos(float3 worldPos)
+{
+    if (useScreenSpace)
+    {
+        float2 uv = worldPos.xy / ScreenSize;
+        return float4(uv * 2 - 1, 0, 1);   // NDC-space
+    }
+    return mul(WorldToClipSpace, float4(worldPos, 1));
+}
+
+#endif</code></pre>
+</div>
+
+<h3 class="reveal">Resources/ParticleDraw.shader</h3>
+<div class="reveal">
+<pre><code class="language-glsl">Shader "FelixFelicis/ParticleDraw"
+{
+    SubShader
+    {
+        Tags
+        {
+            "RenderType"="Transparent"
+            "Queue"="Transparent"
+            "RenderPipeline"="UniversalPipeline"  // URP shader stripper cần tag này
+        }
+
+        ZWrite Off                          // circles không che nhau theo depth
+        ZTest Always                        // overlay trên mọi 3D objects
+        Cull Off                            // quad 2D, vẽ cả 2 mặt
+        Blend SrcAlpha OneMinusSrcAlpha     // alpha blending chuẩn
+
+        Pass
+        {
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "SpaceTransformHelper.hlsl"
+
+            struct appdata { float4 vertex : POSITION; };
+
+            struct v2f
+            {
+                float4 clipPos  : SV_POSITION;
+                float2 localPos : TEXCOORD0;    // dùng cho SDF
+                float  radius   : TEXCOORD1;
+                float4 color    : TEXCOORD2;
+            };
+
+            struct ParticleData
+            {
+                float2 center;        // phải khớp C# ParticleRenderData
+                float  radius;
+                uint   packedColor;
+            };
+
+            float4 UnpackColor(uint packed)
+            {
+                return float4(
+                    (packed        &amp; 0xFF) / 255.0,
+                    ((packed &gt;&gt; 8)  &amp; 0xFF) / 255.0,
+                    ((packed &gt;&gt; 16) &amp; 0xFF) / 255.0,
+                    ((packed &gt;&gt; 24) &amp; 0xFF) / 255.0);
+            }
+
+            StructuredBuffer&lt;ParticleData&gt; InstanceData;
+
+            v2f vert(appdata v, uint instanceID : SV_InstanceID)
+            {
+                ParticleData p = InstanceData[instanceID + InstanceOffset];
+                v2f o;
+
+                // Quad mở rộng thêm aaPadding cho gradient biên AA
+                float2 aaPadding = useScreenSpace ? 2.0 : p.radius * 0.1;
+                float2 diameter  = p.radius * 2;
+                float2 localVert = v.vertex.xy * (diameter + aaPadding);
+                float3 worldPos  = float3(localVert + p.center, 0);
+
+                o.localPos = localVert;
+                o.radius   = p.radius;
+                o.clipPos  = WorldToClipPos(worldPos);
+                o.color    = UnpackColor(p.packedColor);
+                return o;
+            }
+
+            half4 frag(v2f i) : SV_Target
+            {
+                // SDF: length(p) - radius. &lt;0 = inside, &gt;0 = outside
+                float sdf = length(i.localPos) - i.radius;
+
+                // fwidth = hardware derivative, đo "1 pixel rộng bao nhiêu SDF"
+                float fw    = fwidth(sdf);
+                // smoothstep Hermite: gradient mượt 1-pixel tại biên
+                float alpha = 1.0 - smoothstep(-0.5 * fw, 0.5 * fw, sdf);
+
+                return half4(i.color.rgb, i.color.a * alpha);
+            }
+            ENDHLSL
+        }
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>HLSLPROGRAM, không CGPROGRAM.</strong> URP shader stripper strip CGPROGRAM trên Vulkan build. <code>"RenderPipeline"="UniversalPipeline"</code> tag bắt buộc. <em>Xem ParticleRendering.html §3</em> để hiểu toán SDF, fwidth hardware derivative, smoothstep Hermite curve, và tại sao fwidth thay vì invTexelSize.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 4 ═══════════════════════ -->
+<section id="s4">
+<h2 class="reveal"><span class="step-num">4</span> Core drawer — ParticleDrawer.cs</h2>
+
+<div class="reveal">
+<p>File lớn nhất — quản lý double-buffered GPU buffers, CPU staging NativeArray, lazy material, draw call. Implement cả <code>IInstanceWriter</code> lẫn <code>IInstanceDrawer</code>.</p>
+</div>
+
+<h3 class="reveal">Kiến thức cần biết trước</h3>
+<div class="reveal">
+<table>
+  <tr><th>Concept</th><th>Tại sao</th></tr>
+  <tr><td>Double buffering</td><td>CPU và GPU async — 2 buffer luân phiên tránh race condition</td></tr>
+  <tr><td>NativeArray</td><td>Unmanaged heap, không GC — <code>SetData</code> chỉ 1 memcpy</td></tr>
+  <tr><td>Grow-only</td><td>Buffer không shrink khi count giảm — tránh GPU alloc/dealloc stutter</td></tr>
+  <tr><td>Resources.Load</td><td>Shader load bằng path — guaranteed included, khác <code>Shader.Find</code> cần reference</td></tr>
+  <tr><td><code>cmd.SetGlobal*()</code></td><td>Uniforms vào command stream (deferred) — đúng trên Vulkan, khác <code>material.Set*()</code> (immediate)</td></tr>
+</table>
+<p style="font-size:.85rem;color:var(--tx2)"><em>Xem ParticleRendering.html §2 &amp; §5</em> để hiểu sâu NativeArray vs List, 3 cách upload CPU→GPU, double buffer timing, cmd.SetGlobal vs material.Set.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using System;
+using System.Runtime.InteropServices;
+using Unity.Collections;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public class ParticleDrawer : IInstanceWriter&lt;ParticleRenderData&gt;, IInstanceDrawer, IDisposable
+    {
+        private static readonly int InstanceDataID   = Shader.PropertyToID("InstanceData");
+        private static readonly int InstanceOffsetID = Shader.PropertyToID("InstanceOffset");
+        private static readonly int ScreenSizeID     = Shader.PropertyToID("ScreenSize");
+        private static readonly int UseScreenSpaceID = Shader.PropertyToID("useScreenSpace");
+        private static readonly int WorldToClipID    = Shader.PropertyToID("WorldToClipSpace");
+
+        private static readonly int Stride = Marshal.SizeOf&lt;ParticleRenderData&gt;();
+
+        private const string ShaderResourceName = "ParticleDraw";
+        private const int BufferCount = 2;
+
+        private Mesh quadMesh;
+        private Material material;
+        private readonly uint[] args = new uint[5];
+
+        // Double buffering
+        private readonly GraphicsBuffer[] instanceBuffers = new GraphicsBuffer[BufferCount];
+        private int writeIndex;
+        private GraphicsBuffer argsBuffer;
+
+        // CPU staging — persistent, grow-only
+        private NativeArray&lt;ParticleRenderData&gt; cpuStaging;
+
+        private int lastArgsInstanceCount = -1;
+        private int currentFrameCount;
+        private int lastUploadFrame = -1;
+        private bool frameDataReady;
+
+        public ParticleDrawer()
+        {
+            quadMesh = QuadMeshHelper.CreateQuadMesh();
+        }
+
+        // ── Lazy material ──────────────────────────────────────────
+        private bool EnsureMaterial()
+        {
+            if (material != null) return true;
+            var shader = Resources.Load&lt;Shader&gt;(ShaderResourceName);
+            if (shader == null)
+            {
+                Debug.LogError($"[ParticleDrawer] Shader '{ShaderResourceName}' not found in Resources.");
+                return false;
+            }
+            material = new Material(shader);
+            return true;
+        }
+
+        // ── Buffer management ──────────────────────────────────────
+        private bool EnsureInstanceBuffer(int index, int count)
+        {
+            ref var buffer = ref instanceBuffers[index];
+            if (buffer != null &amp;&amp; buffer.IsValid() &amp;&amp; buffer.count &gt;= count)
+                return false;
+            buffer?.Release();
+            buffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, count, Stride);
+            return true;
+        }
+
+        private void EnsureStagingCapacity(int count)
+        {
+            if (cpuStaging.IsCreated &amp;&amp; cpuStaging.Length &gt;= count) return;
+            if (cpuStaging.IsCreated) cpuStaging.Dispose();
+            cpuStaging = new NativeArray&lt;ParticleRenderData&gt;(
+                count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        }
+
+        // ── IInstanceWriter ────────────────────────────────────────
+        public NativeArray&lt;ParticleRenderData&gt; BeginFrame(int count)
+        {
+            frameDataReady = false;                          // guard: no stale Draw()
+            if (!EnsureMaterial()) return default;
+            if (count == 0) return default;
+            if (lastUploadFrame == Time.frameCount)          // guard: double call
+            {
+                Debug.LogWarning("[ParticleDrawer] BeginFrame called twice in the same frame.");
+                return default;
+            }
+
+            writeIndex = (writeIndex + 1) % BufferCount;     // swap buffer
+            EnsureInstanceBuffer(writeIndex, count);
+            EnsureStagingCapacity(count);
+            currentFrameCount = count;
+            return cpuStaging;
+        }
+
+        public void EndFrame(int count)
+        {
+            if (count == 0) return;
+
+            // Upload: 1 memcpy, reliable trên mọi driver kể cả mobile Vulkan
+            instanceBuffers[writeIndex].SetData(cpuStaging, 0, 0, count);
+            lastUploadFrame = Time.frameCount;
+            frameDataReady = true;
+
+            // Args buffer — chỉ re-upload khi count thay đổi
+            if (argsBuffer == null || !argsBuffer.IsValid())
+            {
+                argsBuffer = new GraphicsBuffer(
+                    GraphicsBuffer.Target.IndirectArguments, 1, sizeof(uint) * 5);
+                args[0] = quadMesh.GetIndexCount(0);   // 6 (2 triangles)
+                args[2] = quadMesh.GetIndexStart(0);   // 0
+                args[3] = quadMesh.GetBaseVertex(0);   // 0
+                args[4] = 0;
+                lastArgsInstanceCount = -1;
+            }
+            if (count != lastArgsInstanceCount)
+            {
+                args[1] = (uint)count;
+                argsBuffer.SetData(args);
+                lastArgsInstanceCount = count;
+            }
+        }
+
+        // ── IInstanceDrawer ────────────────────────────────────────
+        public void Draw(CommandBuffer cmd, Camera cam)
+        {
+            if (!frameDataReady || currentFrameCount == 0) return;
+
+            // Tất cả uniforms qua CommandBuffer — deterministic trên Vulkan
+            cmd.SetGlobalBuffer(InstanceDataID, instanceBuffers[writeIndex]);
+            cmd.SetGlobalInt(UseScreenSpaceID, 0);
+            cmd.SetGlobalInt(InstanceOffsetID, 0);
+            cmd.SetGlobalVector(ScreenSizeID,
+                new Vector4(cam.pixelWidth, cam.pixelHeight, 0, 0));
+
+            Matrix4x4 vp = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true)
+                         * cam.worldToCameraMatrix;
+            cmd.SetGlobalMatrix(WorldToClipID, vp);
+
+            cmd.DrawMeshInstancedIndirect(quadMesh, 0, material, 0, argsBuffer);
+        }
+
+        // ── IDisposable ────────────────────────────────────────────
+        public void Dispose()
+        {
+            for (int i = 0; i &lt; BufferCount; i++)
+            {
+                instanceBuffers[i]?.Release();
+                instanceBuffers[i] = null;
+            }
+            argsBuffer?.Release(); argsBuffer = null;
+
+            if (cpuStaging.IsCreated) { cpuStaging.Dispose(); cpuStaging = default; }
+
+            if (material != null)
+            {
+                if (Application.isPlaying) UnityEngine.Object.Destroy(material);
+                else UnityEngine.Object.DestroyImmediate(material);
+                material = null;
+            }
+            if (quadMesh != null)
+            {
+                if (Application.isPlaying) UnityEngine.Object.Destroy(quadMesh);
+                else UnityEngine.Object.DestroyImmediate(quadMesh);
+                quadMesh = null;
+            }
+        }
+    }
+}</code></pre>
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 5 ═══════════════════════ -->
+<section id="s5">
+<h2 class="reveal"><span class="step-num">5</span> Interfaces — IInstanceWriter + IInstanceDrawer</h2>
+
+<div class="reveal">
+<p>Tách <code>ParticleDrawer</code> thành 2 interface — simulation chỉ thấy Writer, render pass chỉ thấy Drawer. Không ai biết concrete type.</p>
+</div>
+
+<h3 class="reveal">IInstanceWriter.cs</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using Unity.Collections;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public interface IInstanceWriter&lt;T&gt; where T : unmanaged
+    {
+        NativeArray&lt;T&gt; BeginFrame(int count);
+        void EndFrame(int count);
+    }
+}</code></pre>
+</div>
+
+<h3 class="reveal">IInstanceDrawer.cs</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public interface IInstanceDrawer
+    {
+        void Draw(CommandBuffer cmd, Camera cam);
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>Tại sao tách?</strong> Interface Segregation — simulation không cần biết Draw tồn tại, render pass không cần biết BeginFrame/EndFrame tồn tại. Giảm coupling.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 6 ═══════════════════════ -->
+<section id="s6">
+<h2 class="reveal"><span class="step-num">6</span> Static bridge — ParticleProvider.cs</h2>
+
+<div class="reveal">
+<p><code>ScriptableRendererFeature</code> (ScriptableObject) không reference được MonoBehaviour trực tiếp. Cần 1 bridge.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">namespace FelixFelicis.ParticleRendering
+{
+    public static class ParticleProvider
+    {
+        private static ParticleDrawer instance;
+
+        // Expose qua interface — consumer không biết concrete type
+        internal static IInstanceWriter&lt;ParticleRenderData&gt; Writer =&gt; instance;
+        internal static IInstanceDrawer Drawer =&gt; instance;
+
+        internal static void Register(ParticleDrawer drawer) =&gt; instance = drawer;
+
+        internal static void Unregister(ParticleDrawer drawer)
+        {
+            if (instance == drawer) instance = null;  // tránh unregister sai instance
+        }
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>Writer và Drawer cùng 1 object</strong> vì phải share buffer lifecycle. Provider giữ concrete drawer nội bộ, expose qua 2 interface riêng biệt.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 7 ═══════════════════════ -->
+<section id="s7">
+<h2 class="reveal"><span class="step-num">7</span> URP Feature — ParticleRendererFeature.cs</h2>
+
+<div class="reveal">
+<p>Composition root — tạo drawer + pass, đăng ký provider, release khi dispose.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using UnityEngine.Rendering.Universal;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public class ParticleRendererFeature : ScriptableRendererFeature
+    {
+        private ParticleDrawer drawer;
+        private ParticleRenderPass renderPass;
+
+        public override void Create()
+        {
+            ReleaseResources();   // URP gọi Create() nhiều lần → prevent leak
+            drawer = new ParticleDrawer();
+            renderPass = new ParticleRenderPass(drawer);
+            ParticleProvider.Register(drawer);
+        }
+
+        public override void AddRenderPasses(ScriptableRenderer renderer,
+            ref RenderingData renderingData)
+        {
+            if (renderPass != null)
+                renderer.EnqueuePass(renderPass);
+        }
+
+        protected override void Dispose(bool disposing) =&gt; ReleaseResources();
+
+        private void ReleaseResources()
+        {
+            if (drawer != null)
+            {
+                ParticleProvider.Unregister(drawer);
+                drawer.Dispose();
+                drawer = null;
+            }
+            renderPass = null;
+        }
+    }
+}</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>ReleaseResources() trong Create():</strong> URP gọi Create() nhiều lần (domain reload, settings change, enter/exit play). Nếu không release trước khi tạo mới → GPU resource leak.
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 8 ═══════════════════════ -->
+<section id="s8">
+<h2 class="reveal"><span class="step-num">8</span> URP Pass — ParticleRenderPass.cs</h2>
+
+<div class="reveal">
+<p>Bridge URP ↔ <code>IInstanceDrawer</code>. RenderGraph path (Unity 6+) + Legacy fallback.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
+using UnityEngine.Rendering.Universal;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public class ParticleRenderPass : ScriptableRenderPass
+    {
+        private readonly IInstanceDrawer drawer;
+
+        public ParticleRenderPass(IInstanceDrawer drawer)
+        {
+            this.drawer = drawer;
+            renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
+        }
+
+        // ── PassData: class (không struct) — RenderGraph pool instances ──
+        private class PassData
+        {
+            public IInstanceDrawer drawer;
+            public Camera camera;
+            public TextureHandle colorTarget;
+            public TextureHandle depthTarget;
+        }
+
+        // ── RenderGraph path ────────────────────────────────────────
+        public override void RecordRenderGraph(RenderGraph renderGraph,
+            ContextContainer frameData)
+        {
+            var cameraData   = frameData.Get&lt;UniversalCameraData&gt;();
+            var resourceData = frameData.Get&lt;UniversalResourceData&gt;();
+
+            // AddUnsafePass — vì DrawMeshInstancedIndirect là raw cmd op
+            using var builder = renderGraph.AddUnsafePass&lt;PassData&gt;(
+                "ParticleRendering", out var passData);
+
+            passData.drawer      = drawer;
+            passData.camera      = cameraData.camera;
+            passData.colorTarget = resourceData.activeColorTexture;
+            passData.depthTarget = resourceData.activeDepthTexture;
+
+            builder.UseTexture(resourceData.activeColorTexture, AccessFlags.ReadWrite);
+            builder.UseTexture(resourceData.activeDepthTexture, AccessFlags.Read);
+            builder.AllowPassCulling(false);  // RenderGraph không detect procedural draw
+
+            // Static lambda → zero closure capture → zero GC
+            builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =&gt;
+            {
+                // Explicit bind — AddUnsafePass KHÔNG auto-bind render targets
+                context.cmd.SetRenderTarget(data.colorTarget, data.depthTarget);
+                var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                data.drawer.Draw(cmd, data.camera);
+            });
+        }
+
+        // ── Legacy path ─────────────────────────────────────────────
+#pragma warning disable CS0672
+        public override void Execute(ScriptableRenderContext context,
+            ref RenderingData renderingData)
+#pragma warning restore CS0672
+        {
+            var cmd = CommandBufferPool.Get("ParticleRendering");
+            drawer.Draw(cmd, renderingData.cameraData.camera);
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
+        }
+    }
+}</code></pre>
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 9 ═══════════════════════ -->
+<section id="s9">
+<h2 class="reveal"><span class="step-num">9</span> Debug sim — ParticleDebugSim.cs</h2>
+
+<div class="reveal">
+<p>MonoBehaviour test toàn bộ pipeline. Attach vào bất kỳ GameObject nào. Thay bằng sim thật khi ready.</p>
+</div>
+
+<h3 class="reveal">Tạo file</h3>
+<div class="reveal">
+<pre><code class="language-csharp">using Unity.Collections;
+using UnityEngine;
+
+namespace FelixFelicis.ParticleRendering
+{
+    public class ParticleDebugSim : MonoBehaviour
+    {
+        [Header("Spawn")]
+        [SerializeField] private int particleCount = 200;
+        [SerializeField] private float spawnRange = 10f;
+
+        [Header("Appearance")]
+        [SerializeField] private float radiusMin = 0.1f;
+        [SerializeField] private float radiusMax = 0.5f;
+
+        [Header("Animation")]
+        [SerializeField] private float driftSpeed = 1f;
+
+        // Pre-allocated — zero per-frame alloc
+        private int count;
+        private Vector2[] positions;
+        private Vector2[] velocities;
+        private float[] radii;
+        private uint[] packedColors;
+
+        private void Start()
+        {
+            count = particleCount;
+            positions    = new Vector2[count];
+            velocities   = new Vector2[count];
+            radii        = new float[count];
+            packedColors = new uint[count];
+
+            for (int i = 0; i &lt; count; i++)
+            {
+                positions[i]  = new Vector2(
+                    Random.Range(-spawnRange, spawnRange),
+                    Random.Range(-spawnRange, spawnRange));
+                velocities[i] = Random.insideUnitCircle.normalized;
+                radii[i]      = Random.Range(radiusMin, radiusMax);
+
+                // Pack color 1 lần (cold path), không ở Update (hot path)
+                packedColors[i] = ParticleRenderData.PackColor(
+                    Color.HSVToRGB(Random.value, 0.7f, 1f));
+            }
+        }
+
+        private void Update()
+        {
+            float dt = driftSpeed * Time.deltaTime;
+            for (int i = 0; i &lt; count; i++)
+            {
+                positions[i] += velocities[i] * dt;
+                if (positions[i].x &gt; spawnRange || positions[i].x &lt; -spawnRange)
+                    velocities[i].x = -velocities[i].x;
+                if (positions[i].y &gt; spawnRange || positions[i].y &lt; -spawnRange)
+                    velocities[i].y = -velocities[i].y;
+            }
+
+            // Ghi thẳng vào GPU staging — zero intermediate copy
+            var writer = ParticleProvider.Writer;
+            if (writer == null) return;
+
+            NativeArray&lt;ParticleRenderData&gt; buffer = writer.BeginFrame(count);
+            if (!buffer.IsCreated) return;
+
+            for (int i = 0; i &lt; count; i++)
+            {
+                buffer[i] = new ParticleRenderData
+                {
+                    center      = positions[i],
+                    radius      = radii[i],
+                    packedColor = packedColors[i]
+                };
+            }
+            writer.EndFrame(count);
+        }
+    }
+}</code></pre>
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 10: RUNTIME FLOW ════════ -->
+<section id="s10">
+<h2 class="reveal"><span class="step-num">10</span> Runtime flow — khi nhấn Play</h2>
+
+<div class="reveal">
+<p>Sau khi tạo xong tất cả files (Step 1–9), thêm Feature vào URP Renderer, attach DebugSim vào GameObject — nhấn Play. Đây là <strong>thứ tự chính xác</strong> mọi thứ chạy:</p>
+</div>
+
+<h3 class="reveal">Khởi tạo (1 lần)</h3>
+<div class="reveal">
+<div class="arch">1. URP load Renderer Asset
+   └── gọi <em>ParticleRendererFeature</em>.Create()
+       ├── ReleaseResources()           ← cleanup nếu Create() gọi lại
+       ├── new <em>ParticleDrawer</em>()         ← tạo quad mesh
+       ├── new <em>ParticleRenderPass</em>(drawer)
+       └── <em>ParticleProvider</em>.Register(drawer)
+
+2. Unity gọi <em>ParticleDebugSim</em>.Start()
+   ├── pre-allocate arrays (positions, velocities, radii)
+   └── PackColor() cho tất cả particles 1 lần (cold path)</div>
+</div>
+
+<h3 class="reveal">Mỗi frame</h3>
+<div class="reveal">
+<div class="arch">3. Unity gọi <em>ParticleDebugSim</em>.Update()                      ← UPDATE PHASE
+   ├── di chuyển particles (positions += velocities * dt)
+   ├── ParticleProvider.Writer.BeginFrame(count)
+   │   ├── frameDataReady = false
+   │   ├── writeIndex swap (0→1 hoặc 1→0)
+   │   ├── ensure GPU buffer capacity (grow-only)
+   │   ├── ensure CPU staging capacity (grow-only)
+   │   └── return cpuStaging NativeArray
+   ├── ghi vào nativeArray[i] = {center, radius, packedColor}
+   └── Writer.EndFrame(count)
+       ├── SetData(cpuStaging → GPU buffer)   ← 1 memcpy
+       ├── update argsBuffer (nếu count đổi)
+       └── frameDataReady = true
+
+4. URP gọi <em>ParticleRendererFeature</em>.AddRenderPasses()          ← RENDER PHASE
+   └── enqueue <em>ParticleRenderPass</em>
+
+5. URP execute render pass (per camera)
+   └── <em>ParticleRenderPass</em>.RecordRenderGraph()
+       ├── AddUnsafePass → SetRenderFunc (static lambda):
+       │   ├── context.cmd.SetRenderTarget(color, depth)
+       │   └── drawer.Draw(cmd, cam)
+       │       ├── cmd.SetGlobalBuffer(InstanceData)
+       │       ├── cmd.SetGlobalVector(ScreenSize)
+       │       ├── cmd.SetGlobalMatrix(VP matrix)
+       │       └── DrawMeshInstancedIndirect
+       │           └── GPU vẽ N quads (1 draw call)
+       │               └── fragment shader: SDF → fwidth → smoothstep → circle
+       └── (nếu có camera thứ 2 → Draw() gọi lại, VP matrix mới, data không upload lại)</div>
+
+<p>Quay lại bước 3 cho frame tiếp. <code>writeIndex</code> đã swap → CPU ghi buffer khác, GPU pipeline vẫn đọc buffer cũ an toàn.</p>
+</div>
+
+<div class="note reveal">
+  <strong>Lý thuyết chi tiết:</strong> Để hiểu sâu tại sao double buffer, tại sao NativeArray thay vì List, tại sao cmd.SetGlobal thay vì material.Set, tại sao CBUFFER explicit — xem <strong>ParticleRendering.html</strong> (docs lý thuyết, thư mục <code>Implementation/ParticleRendering/</code>).
+</div>
+</section>
+
+<!-- ═══════════════════ STEP 11: TESTING ═════════════ -->
+<section id="s11">
+<h2 class="reveal"><span class="step-num">11</span> Kiểm thử + Vulkan fixes</h2>
+
+<h3 class="reveal">Setup trong Unity</h3>
+<div class="reveal">
+<ol>
+  <li>Tạo GameObject, attach <code>ParticleDebugSim</code></li>
+  <li>URP Renderer Asset → Add Renderer Feature → <code>ParticleRendererFeature</code></li>
+  <li>Play</li>
+</ol>
+</div>
+
+<h3 class="reveal">Test checklist</h3>
+<div class="reveal">
+<table>
+  <tr><th>#</th><th>Kiểm tra</th><th>Pass</th><th>Debug nếu fail</th></tr>
+  <tr><td>1</td><td>Play với ParticleDebugSim</td><td>Circles hiện</td><td>Camera, ZTest, shader error</td></tr>
+  <tr><td>2</td><td>Frame Debugger</td><td>1 draw call "ParticleRendering"</td><td>Buffer/args sai</td></tr>
+  <tr><td>3</td><td>10.000+ particles</td><td>&gt; 60 FPS</td><td>Profiler → SetData</td></tr>
+  <tr><td>4</td><td>Zoom gần 1 circle</td><td>Biên mượt</td><td>AA padding (radius × 0.1)</td></tr>
+  <tr><td>5</td><td>Game + Scene view cùng lúc</td><td>Cả 2 đúng</td><td>VP matrix per-camera</td></tr>
+  <tr><td>6</td><td>Enter/Exit Play 3 lần</td><td>Không error, memory ổn</td><td>ReleaseResources leak</td></tr>
+  <tr><td>7</td><td>Profiler → GC Alloc</td><td>0 trong render path</td><td>Managed allocation</td></tr>
+  <tr><td>8</td><td>Build APK → device</td><td>Circles hiện</td><td><code>adb logcat -s Unity</code></td></tr>
+</table>
+</div>
+
+<h3 class="reveal">6 vấn đề Vulkan/Android — đã fix trong code trên</h3>
+<div class="reveal">
+<table>
+  <tr><th>#</th><th>Vấn đề</th><th>Fix (đã áp dụng)</th></tr>
+  <tr><td>1</td><td>CGPROGRAM bị strip</td><td>HLSLPROGRAM + Core.hlsl + URP tag</td></tr>
+  <tr><td>2</td><td>Shader.Find() → null</td><td>Resources.Load&lt;Shader&gt;()</td></tr>
+  <tr><td>3</td><td>Loose shader globals</td><td>CBUFFER_START explicit</td></tr>
+  <tr><td>4</td><td>material.Set*() stale</td><td>cmd.SetGlobal*()</td></tr>
+  <tr><td>5</td><td>Không SetRenderTarget</td><td>Explicit SetRenderTarget trong AddUnsafePass</td></tr>
+  <tr><td>6</td><td>LockBufferForWrite stale</td><td>SetData(NativeArray)</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ SUMMARY ══════════════════════ -->
+<section id="s12">
+<h2 class="reveal">Tóm tắt</h2>
+<div class="perf-grid reveal">
+  <div class="perf-card"><div class="perf-val">11</div><div class="perf-label">files tạo</div></div>
+  <div class="perf-card"><div class="perf-val">1</div><div class="perf-label">draw call / camera</div></div>
+  <div class="perf-card"><div class="perf-val">16B</div><div class="perf-label">per particle</div></div>
+  <div class="perf-card"><div class="perf-val">1</div><div class="perf-label">memcpy / frame</div></div>
+  <div class="perf-card"><div class="perf-val">0</div><div class="perf-label">GC in render path</div></div>
+  <div class="perf-card"><div class="perf-val">2×</div><div class="perf-label">double-buffered</div></div>
+</div>
+</section>
+
+</main>
+
+<footer>
+  FelixFelicis · Particle Rendering Implementation Guide · <code>FelixFelicis.ParticleRendering</code>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-glsl.min.js"></script>
+<script>
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+const progressBar = document.getElementById('progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  progressBar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+});
+</script>
+</body>
+</html>
