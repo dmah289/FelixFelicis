@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// 2D shape type projected from a 3D collider.

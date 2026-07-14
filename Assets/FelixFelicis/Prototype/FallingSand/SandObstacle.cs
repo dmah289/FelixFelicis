@@ -3,7 +3,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Marks a GameObject as a sand obstacle.

@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Bakes two <see cref="EdgeCollider2D"/> walls (left + right) into a

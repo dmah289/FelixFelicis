@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Per-particle state for falling sand simulation.

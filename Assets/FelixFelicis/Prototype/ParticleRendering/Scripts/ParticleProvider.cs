@@ -1,4 +1,4 @@
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// Static bridge between simulation (MonoBehaviour) and renderer (ScriptableRenderPass).

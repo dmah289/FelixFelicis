@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// One edge segment of a funnel wall, fully precomputed at bake time.

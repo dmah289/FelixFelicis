@@ -2,7 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Zero-GC 2D spatial hash using counting-sort.

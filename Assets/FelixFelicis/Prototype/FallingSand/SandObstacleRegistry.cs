@@ -4,7 +4,7 @@ using Unity.Collections;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Collects active <see cref="SandObstacle"/> instances and packs them into a

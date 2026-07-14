@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// Factory for the unit quad mesh used by GPU-instanced particle rendering.

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace FelixFelicis.ParticleRendering.Simulation
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
 {
     /// <summary>
     /// Natural sand color palette generator.
