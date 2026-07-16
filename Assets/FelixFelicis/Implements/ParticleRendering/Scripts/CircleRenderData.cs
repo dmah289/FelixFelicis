@@ -9,11 +9,5 @@ namespace FelixFelicis.Implements.ParticleRendering.Scripts
         public Vector2 center;
         public float radius;
         public uint packedColor;
-
-        public static uint PackColor(Color color)
-        {
-            Color32 c = color;
-            return (uint)(c.r | (c.g << 8) | (c.b << 16) | (c.a << 24));
-        }
     }
 }
