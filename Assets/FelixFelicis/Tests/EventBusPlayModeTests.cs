@@ -199,7 +199,10 @@ namespace FelixFelicis.Tests
             Object.DestroyImmediate(owner);
             spawned.Remove(owner);
 
-            EventBus<DeadOwnerEvent>.Publish();
+            // Hợp đồng của plan là "không exception thoát ra", không chỉ "không được gọi":
+            // bus cũ ném MissingReferenceException ngay ở đây.
+            Assert.DoesNotThrow(() => EventBus<DeadOwnerEvent>.Publish(),
+                "Publish với owner đã destroy không được ném ra caller");
 
             Assert.AreEqual(0, EventBusTestListener.DeadOwnerHits,
                 "Listener của owner đã destroy KHÔNG được gọi — prune phải chạy trước lúc gọi");
@@ -321,6 +324,42 @@ namespace FelixFelicis.Tests
             subBefore.Dispose();
             subThrow.Dispose();
             subAfter.Dispose();
+        }
+
+        // Case 11 — KHÔNG có trong plan. Case 5 và 9 chỉ có MỘT listener, nên không cái nào kiểm
+        // được nhánh prune có làm lệch vòng duyệt hay không: `RemoveAt(i); continue;` đặt tombstone
+        // rồi đi tiếp bằng chính `i` đó. Owner chết đứng TRƯỚC người còn sống là bố trí duy nhất
+        // phơi ra chuyện đó — và cũng phân biệt được chiều của IsOwnerDestroyed một cách rõ ràng:
+        // nếu nó lại bị viết ngược thì hits vẫn bằng 1, nhưng là hits của thằng đã chết.
+        [Test]
+        public void Case11_PruningADeadOwnerDoesNotSkipTheListenerAfterIt()
+        {
+            EventBusTestListener.ResetCounters();
+
+            var deadListener = SpawnListener("Case11_DeadOwner", out var deadOwner);
+            EventBus<PrunedNeighbourEvent>.Subscribe(deadListener.OnPrunedNeighbourEvent);
+
+            // Người sống là lambda ⇒ đếm riêng, không dùng chung counter static với người chết,
+            // nên khẳng định chỉ ra đúng ai đã chạy.
+            int survivorHits = 0;
+            var survivor = EventBus<PrunedNeighbourEvent>.Subscribe(_ => survivorHits++);
+
+            Assert.AreEqual(2, EventBus<PrunedNeighbourEvent>.ActiveListenerCount,
+                "Hai listener khác Target phải cùng đăng ký được");
+
+            Object.DestroyImmediate(deadOwner);
+            spawned.Remove(deadOwner);
+
+            EventBus<PrunedNeighbourEvent>.Publish();
+
+            Assert.AreEqual(0, EventBusTestListener.PrunedNeighbourHits,
+                "Owner đã destroy ở index 0 không được gọi");
+            Assert.AreEqual(1, survivorHits,
+                "Listener ở index 1 bị bỏ sót — prune làm lệch vòng duyệt");
+            Assert.AreEqual(1, EventBus<PrunedNeighbourEvent>.ActiveListenerCount,
+                "Sau Compact chỉ còn người sống");
+
+            survivor.Dispose();
         }
     }
 }

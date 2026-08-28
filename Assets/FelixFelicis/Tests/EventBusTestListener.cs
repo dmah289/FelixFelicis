@@ -9,6 +9,9 @@ namespace FelixFelicis.Tests
     /// <summary>Event cho case 9 — listener còn sống lúc Publish.</summary>
     public readonly struct AliveOwnerEvent : IEvent { }
 
+    /// <summary>Event cho case 11 — owner chết đứng TRƯỚC một listener còn sống.</summary>
+    public readonly struct PrunedNeighbourEvent : IEvent { }
+
     /// <summary>
     /// Listener sống trên một <see cref="GameObject"/> thật, để kiểm nhánh auto-prune của
     /// <see cref="EventBus{T}"/> — nhánh duy nhất cần <c>Target</c> là <see cref="UnityEngine.Object"/>.
@@ -25,15 +28,19 @@ namespace FelixFelicis.Tests
     {
         public static int DeadOwnerHits;
         public static int AliveOwnerHits;
+        public static int PrunedNeighbourHits;
 
         public static void ResetCounters()
         {
             DeadOwnerHits = 0;
             AliveOwnerHits = 0;
+            PrunedNeighbourHits = 0;
         }
 
         public void OnDeadOwnerEvent(DeadOwnerEvent e) => DeadOwnerHits++;
 
         public void OnAliveOwnerEvent(AliveOwnerEvent e) => AliveOwnerHits++;
+
+        public void OnPrunedNeighbourEvent(PrunedNeighbourEvent e) => PrunedNeighbourHits++;
     }
 }
