@@ -92,3 +92,10 @@ Assets/StompyRobot/SRDebugger/PlaymakerIntegration.unitypackage.meta
 .utmp/
 test_BackUpThisFolder_ButDontShipItWithYourGame/
 horcrux_algo_BurstDebugInformation_DoNotShip/
+Packages/com.sisus.init-args/Add-Ons/FishNet.unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/Netcode for GameObjects.unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/Odin.unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/ScriptTemplates (Pre-Unity 6).unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/ScriptTemplates.unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/uGUI.unitypackage.meta
+Packages/com.sisus.init-args/Add-Ons/UnityEngine.unitypackage.meta
