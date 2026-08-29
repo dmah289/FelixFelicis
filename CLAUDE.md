@@ -1,48 +1,63 @@
 # CLAUDE.md
 
-## Dependencies
+## Đọc trước khi làm bất cứ việc gì
 
-- **Horcrux SDK** — git submodule `Assets/Horcrux`, design guide: `Assets/Horcrux/SKILL.md`
-- **Init(args)** — DI via `[Service]` + `MonoBehaviour<TDep>`. Runtime assemblies only
-- **UniTask** — async/await, not coroutines. Always propagate `CancellationToken`
-- **Addressables** — load via `AssetReference`, track handles for `Release()`
+**`Assets/Horcrux/MY_SKILL.md`** — tư tưởng thiết kế hệ thống và quy trình làm việc. Đọc **hết** trước
+khi viết code, tài liệu, hay plan. Nó chứa: 12 nguyên tắc · quy trình phỏng vấn và chốt phạm vi · thiết kế
+code · khi nào dùng toán · cách viết `.md` / `.html` / Plan.
 
-## Design Principles
+File này **không** nhắc lại nội dung đó. Nó chỉ giữ thứ `MY_SKILL.md` cố ý không chứa để mang sang dự
+án khác được: vị trí, tên, và layout riêng của dự án này.
 
-Áp dụng cho **tất cả** code: runtime, editor, utilities. Không có ngoại lệ trừ khi ghi rõ.
+## Vị trí
 
-### SOLID — tuyệt đối tuân thủ
+| Thứ | Ở đâu |
+|---|---|
+| Tư tưởng thiết kế & quy trình | `Assets/Horcrux/MY_SKILL.md` |
+| Khung tài liệu `.html` | `Assets/Horcrux/DOCS_TEMPLATE.html` — cách dùng ghi trong khối comment đầu file |
+| Horcrux SDK | `Assets/Horcrux` — **git submodule**, commit riêng |
 
-- **S**: 1 class = 1 responsibility. Tách khi class có >1 lý do thay đổi
-- **O**: Extend, don't modify. Thiết kế cho mở rộng (interface, abstract, strategy)
-- **L**: Subtypes thay thế được base mà không break behavior
-- **I**: Interface nhỏ, tách theo consumer. Không ép client phụ thuộc method không dùng
-- **D**: Depend on abstractions. **Runtime**: dùng InitArgs (`Sisus.Init`) cho DI. **Editor**: không bắt buộc InitArgs, constructor injection hoặc static factory OK
+Hai file đầu nằm **trong submodule**, nên chúng đi theo SDK sang dự án khác. File `CLAUDE.md` này ở gốc
+repo và chỉ thuộc dự án này.
 
-### Hiệu năng — tuyệt đối tối ưu
+## Assembly
 
-**Zero GC in hot paths:**
-- Pre-allocate collections, reuse buffers. `struct`/`ref`/`Span<T>` over `class` khi hợp lý
-- Cache `GUIContent`/`GUIStyle`/delegates: `static readonly` hoặc lazy-init (`EnsureStyles()`)
-- Pool objects thay vì Instantiate/Destroy. Grow-only buffers khi size dao động
+| Assembly | Thư mục | Namespace | References |
+|---|---|---|---|
+| `com.horcrux.runtime` | `Assets/Horcrux/Runtime/` | `Horcrux.Runtime` | InitArgs, InitArgs.Services, Unity.Addressables, Unity.ResourceManager, UniTask, UniTask.Addressables, Unity.Mathematics |
+| `com.horcrux.editor` | `Assets/Horcrux/Editor/` | `Horcrux.Editor` | `com.horcrux.runtime`; `includePlatforms: [Editor]` |
 
-**Tối ưu tính toán:**
-- Cache over recompute — dirty flags, event-driven rebuilds, pre-built lookup dictionaries
-- Heavy work trong event handlers, **tuyệt đối không** trong `Update`/polling loops
-- Tách static vs dynamic — phần không đổi tính 1 lần, phần thay đổi tính incremental
+## Layout — Runtime
 
-**Tối ưu bộ nhớ:**
-- NativeArray/NativeList (unmanaged) cho data lớn cần truyền GPU hoặc Job System
-- `StructLayout(Sequential)` khi struct phải khớp layout với GPU/native
-- Không allocate trong hot path: không `new`, không LINQ, không string concat, không closure capture
+```
+Runtime/
+├── Abstractions/      interface và abstract class
+│   ├── Foundations/    hệ độc lập, bê sang dự án khác được
+│   └── Composites/     hệ dựng trên nhiều Foundation
+├── Implementations/   bản triển khai, soi gương theo tên hệ ở Abstractions/
+│   ├── Foundations/
+│   └── Composites/
+└── Utilities/         static, universal, không phụ thuộc hệ nào trong SDK
+```
 
-### Naming — self-documenting code
+Một hệ thường có mặt ở cả hai nhánh với **cùng tên thư mục**. Không phải cặp nào cũng đủ đôi: có hệ mới
+chỉ có abstraction (chưa triển khai), có hệ triển khai trực tiếp vì không cần abstraction (`MY_SKILL.md`
+NT6 — chỉ tạo abstraction khi có implementation thứ hai).
 
-- Methods convey purpose: `EnsureMaterial()`, `SwapWriteBuffer()`. Không `Process`/`Handle`/`DoWork`
-- Booleans read as questions: `IsPickable`, `HasCars`, `frameDataReady`
-- Code tự giải thích → comment chỉ khi giải thích **tại sao**, không giải thích **cái gì**
+Phân loại Foundation so với Composite quyết **ngay khi tạo hệ**, không sửa sau (`MY_SKILL.md` §3.2).
 
-### Async
+## Layout — Editor
 
-- UniTask only. Always propagate `CancellationToken`
-- Addressables via `AssetReference`, not string keys
+```
+Editor/
+├── Common/        dùng chung nhiều tool: màu, GUIContent, GUIStyle, layout options
+├── Utilities/     helper cho editor
+└── <TênTool>/     một thư mục một tool: window, drawer, data, utility của nó
+```
+
+## Đặt tài liệu ở đâu
+
+`.md` và `.html` của một hệ thống nằm **trong chính thư mục hệ thống đó**, không gom vào thư mục docs
+riêng. Ví dụ: `Runtime/Implementations/Foundations/Audio/AudioSystem.md`.
+
+Nghĩa vụ cập nhật khi hệ thống đổi: xem `MY_SKILL.md` §5.
