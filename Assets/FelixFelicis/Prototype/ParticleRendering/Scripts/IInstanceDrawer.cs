@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// Draw-side contract for GPU instanced rendering.

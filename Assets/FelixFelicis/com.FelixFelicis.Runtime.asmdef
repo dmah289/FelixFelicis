@@ -5,7 +5,10 @@
         "Unity.RenderPipelines.Universal.Runtime",
         "com.horcrux.runtime",
         "Unity.RenderPipelines.Core.Runtime",
-        "Unity.Collections"
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Mathematics",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

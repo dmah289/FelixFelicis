@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Rendering — FelixFelicis</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<style>
+/* ── Reset & Tokens ─────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--bg4:#242d3a;
+  --tx:#e6edf3;--tx2:#8b949e;--tx3:#484f58;
+  --ac:#58a6ff;--ac2:#bc8cff;--gr:#3fb950;--or:#d29922;--rd:#f85149;
+  --bd:#30363d;--r:10px;
+  --mono:'JetBrains Mono','Fira Code','Cascadia Code','SF Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+}
+html{scroll-behavior:smooth;background:var(--bg);color:var(--tx);font:17px/1.7 var(--sans)}
+body{overflow-x:hidden}
+a{color:var(--ac);text-decoration:none}a:hover{text-decoration:underline}
+
+/* ── Progress Bar ───────────────────────────────────────────── */
+#progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--ac),var(--ac2));width:0;z-index:999;transition:width .1s}
+
+/* ── Header ─────────────────────────────────────────────────── */
+#header{max-width:920px;margin:0 auto;padding:4rem 1.5rem 2rem;border-bottom:1px solid var(--bd)}
+#header h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-.03em;background:linear-gradient(135deg,var(--ac),var(--ac2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#header .sub{font-size:1.05rem;color:var(--tx2);margin-top:.4rem}
+#header .badge{display:inline-block;margin-top:.8rem;padding:.3em .9em;border:1px solid var(--bd);border-radius:99px;font-family:var(--mono);font-size:.78rem;color:var(--tx2)}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+main{max-width:920px;margin:0 auto;padding:0 1.5rem 6rem}
+section{padding-top:4rem}
+section .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+section .reveal.visible{opacity:1;transform:none}
+
+/* ── Typography ─────────────────────────────────────────────── */
+h2{font-size:1.9rem;font-weight:700;letter-spacing:-.02em;margin-bottom:1.5rem;padding-bottom:.5rem;border-bottom:1px solid var(--bd)}
+h3{font-size:1.3rem;font-weight:600;margin:2.5rem 0 1rem;color:var(--ac)}
+p,ul,ol{margin-bottom:1rem}
+ul{padding-left:1.3em}li{margin-bottom:.3rem}
+strong{color:var(--tx);font-weight:600}
+em{color:var(--ac2);font-style:normal}
+
+/* ── Card / Box ─────────────────────────────────────────────── */
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:1.5rem;margin:1.5rem 0}
+.card-title{font-weight:600;margin-bottom:.75rem;font-size:1.05rem;color:var(--ac)}
+.note{border-left:3px solid var(--or);background:var(--bg2);padding:1rem 1.2rem;border-radius:0 var(--r) var(--r) 0;margin:1.5rem 0;font-size:.92rem;color:var(--tx2)}
+.note strong{color:var(--or)}
+
+/* ── Code ───────────────────────────────────────────────────── */
+code{font-family:var(--mono);font-size:.88em;background:var(--bg3);padding:.15em .4em;border-radius:4px}
+pre{margin:1.2rem 0!important;border-radius:var(--r)!important;border:1px solid var(--bd)!important}
+pre code{background:none!important;padding:0!important;font-size:.85rem!important;line-height:1.6!important}
+
+/* ── Tables ─────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.92rem}
+th{text-align:left;padding:.6rem .8rem;border-bottom:2px solid var(--bd);color:var(--ac);font-weight:600}
+td{padding:.5rem .8rem;border-bottom:1px solid var(--bd)}
+tr:last-child td{border:none}
+
+/* ── Interactive Demos ──────────────────────────────────────── */
+.demo{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);padding:1.5rem;margin:2rem 0}
+.demo-title{font-family:var(--mono);font-size:.8rem;color:var(--ac2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:1rem}
+.demo canvas{display:block;border-radius:8px;cursor:crosshair}
+.demo-row{display:flex;gap:1.5rem;align-items:flex-start;flex-wrap:wrap}
+.demo-row>*{flex:1;min-width:250px}
+
+/* Color Packing Demo */
+.byte-bar{display:flex;gap:2px;margin:.8rem 0;height:36px;border-radius:6px;overflow:hidden}
+.byte-bar .byte{flex:1;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.75rem;font-weight:600;color:#000}
+.byte-bar .r{background:#ff6b6b}.byte-bar .g{background:#51cf66}.byte-bar .b{background:#339af0}.byte-bar .a{background:#fff}
+
+/* Double Buffer Demo */
+.db-vis{display:flex;gap:2rem;justify-content:center;align-items:center;margin:1rem 0;flex-wrap:wrap}
+.db-buf{width:140px;height:80px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:1.1rem;transition:all .4s ease;border:2px solid var(--bd)}
+.db-buf.cpu-write{border-color:var(--ac);box-shadow:0 0 16px rgba(88,166,255,.3)}
+.db-buf.gpu-read{border-color:var(--gr);box-shadow:0 0 16px rgba(63,185,80,.3)}
+.db-label{font-size:.75rem;color:var(--tx2);text-align:center;margin-top:.3rem}
+.db-controls{display:flex;gap:.8rem;justify-content:center;margin-top:1rem}
+.db-controls button{padding:.4rem 1.2rem;border-radius:6px;border:1px solid var(--bd);background:var(--bg3);color:var(--tx);font-family:var(--mono);font-size:.85rem;cursor:pointer;transition:all .2s}
+.db-controls button:hover{border-color:var(--ac);background:var(--bg4)}
+
+/* SDF Demo */
+.sdf-info{font-family:var(--mono);font-size:.85rem;margin-top:.5rem;color:var(--tx2);min-height:1.4em}
+
+/* Smoothstep Demo */
+.ss-legend{display:flex;gap:1.5rem;margin-top:.6rem;font-size:.82rem;color:var(--tx2)}
+.ss-legend span::before{content:'';display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:.4rem;vertical-align:middle}
+.ss-legend .l-alpha::before{background:var(--ac)}.ss-legend .l-sdf::before{background:var(--rd)}
+
+/* Architecture Diagram */
+.arch{font-family:var(--mono);font-size:.82rem;line-height:1.8;white-space:pre;overflow-x:auto;padding:1rem;background:var(--bg3);border-radius:var(--r);color:var(--tx2)}
+.arch em{color:var(--ac);font-style:normal}
+
+/* Perf Summary */
+.perf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0}
+.perf-card{background:var(--bg3);border-radius:var(--r);padding:1.2rem;text-align:center}
+.perf-val{font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,var(--ac),var(--ac2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.perf-label{font-size:.82rem;color:var(--tx2);margin-top:.2rem}
+
+/* TOC */
+#toc{max-width:920px;margin:3rem auto;padding:0 1.5rem}
+#toc h2{font-size:1.3rem}
+#toc ol{columns:2;column-gap:2rem;padding-left:1.5em}
+#toc li{font-size:.92rem;margin-bottom:.3rem;break-inside:avoid}
+@media(max-width:600px){#toc ol{columns:1}}
+
+/* ── Vulkan Table ───────────────────────────────────────────── */
+.vk-table td:nth-child(2){color:var(--rd);font-weight:600}
+.vk-table td:last-child{color:var(--gr)}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+footer{text-align:center;padding:3rem 1rem;color:var(--tx3);font-size:.85rem;border-top:1px solid var(--bd)}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<!-- ═══════════════════════ HEADER ═════════════════════ -->
+<header id="header">
+  <h1>Particle Rendering</h1>
+  <p class="sub">Hàng nghìn circles trên GPU trong 1 draw call</p>
+  <span class="badge">GPU Instancing · SDF · NativeArray · URP RenderGraph</span>
+</header>
+
+<!-- ═══════════════════════ TOC ════════════════════════ -->
+<nav id="toc">
+  <h2>Mục lục</h2>
+  <ol>
+    <li><a href="#s1">Particle = 16 bytes</a></li>
+    <li><a href="#s2">CPU → GPU: 1 memcpy mỗi frame</a></li>
+    <li><a href="#s3">GPU vẽ circle: Instancing + SDF</a></li>
+    <li><a href="#s4">Frame lifecycle</a></li>
+    <li><a href="#s5">Shader</a></li>
+    <li><a href="#s6">URP Integration</a></li>
+    <li><a href="#s7">GraphicsBuffer vs ComputeBuffer</a></li>
+    <li><a href="#s8">Safety guards</a></li>
+    <li><a href="#s9">Vulkan / Android fixes</a></li>
+    <li><a href="#s10">Kiến trúc files</a></li>
+    <li><a href="#s11">Debug sim</a></li>
+    <li><a href="#s12">Kiểm thử</a></li>
+    <li><a href="#s13">Mở rộng</a></li>
+    <li><a href="#s14">Tóm tắt hiệu năng</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ═══════════════════ 1. STRUCT ═════════════════════ -->
+<section id="s1">
+<h2 class="reveal">1. Particle = 16 bytes</h2>
+
+<div class="reveal">
+<p>Mỗi particle trên GPU là 1 struct <strong>16 bytes</strong> — hai bên C# và HLSL phải khớp byte-by-byte:</p>
+
+<pre><code class="language-csharp">// C# — StructLayout ngăn compiler sắp xếp lại thứ tự trường
+[StructLayout(LayoutKind.Sequential)]
+public struct ParticleRenderData
+{
+    public Vector2 center;      // 8 bytes
+    public float   radius;      // 4 bytes
+    public uint    packedColor; // 4 bytes  ← Color 16B → uint 4B
+}</code></pre>
+
+<pre><code class="language-glsl">// HLSL — phải khớp thứ tự và kích thước từng trường
+struct ParticleData
+{
+    float2 center;      // 8 bytes
+    float  radius;      // 4 bytes
+    uint   packedColor; // 4 bytes
+};</code></pre>
+
+<p>Nếu thứ tự lệch → GPU đọc sai offset → visual corruption. 16 bytes là power-of-2, nên GPU cache line (64 hoặc 128 bytes) chứa đúng 4 hoặc 8 particles — không lãng phí.</p>
+</div>
+
+<h3 class="reveal">Color packing</h3>
+<div class="reveal">
+<p><code>Color</code> của Unity = 4 float = <strong>16 bytes</strong>. Màu particle không cần float precision (256 mức/kênh là đủ), nên pack <code>Color32</code> (4 × uint8) thành 1 <code>uint</code> = <strong>4 bytes</strong>. Struct giảm từ 28 bytes (8 + 4 + 16) xuống <strong>16 bytes</strong> (−43% bandwidth).</p>
+
+<pre><code class="language-csharp">C# pack:    (uint)(R | G&lt;&lt;8 | B&lt;&lt;16 | A&lt;&lt;24)
+
+Bộ nhớ (little-endian):
+byte:     [  R  ][  G  ][  B  ][  A  ]
+bit:      0──7   8──15  16──23 24──31
+
+HLSL unpack:
+  R = (packed        &amp; 0xFF) / 255.0
+  G = ((packed &gt;&gt; 8)  &amp; 0xFF) / 255.0
+  B = ((packed &gt;&gt; 16) &amp; 0xFF) / 255.0
+  A = ((packed &gt;&gt; 24) &amp; 0xFF) / 255.0</code></pre>
+
+<p><code>Color32 c = color</code> — C# implicit conversion tự clamp float [0,1] → byte [0,255].</p>
+</div>
+
+<div class="demo reveal">
+  <div class="demo-title">▶ Color Packing — thử chọn màu</div>
+  <div class="demo-row">
+    <div>
+      <input type="color" id="cpColor" value="#e06040" style="width:100%;height:50px;border:none;border-radius:6px;cursor:pointer">
+      <p style="margin-top:.8rem;font-size:.85rem;color:var(--tx2)">RGBA float</p>
+      <code id="cpFloat" style="display:block;font-size:.82rem"></code>
+      <p style="margin-top:.5rem;font-size:.85rem;color:var(--tx2)">Color32 (bytes)</p>
+      <code id="cpBytes" style="display:block;font-size:.82rem"></code>
+    </div>
+    <div>
+      <p style="font-size:.85rem;color:var(--tx2)">Byte layout (little-endian)</p>
+      <div class="byte-bar" id="cpBar">
+        <div class="byte r">R</div><div class="byte g">G</div><div class="byte b">B</div><div class="byte a">A</div>
+      </div>
+      <p style="margin-top:.5rem;font-size:.85rem;color:var(--tx2)">Packed uint</p>
+      <code id="cpPacked" style="display:block;font-size:.95rem;font-weight:700"></code>
+      <p style="font-size:.75rem;color:var(--tx3);margin-top:.3rem">C#: <code style="font-size:.75rem">(uint)(R | G&lt;&lt;8 | B&lt;&lt;16 | A&lt;&lt;24)</code></p>
+    </div>
+  </div>
+</div>
+
+</section>
+
+<!-- ═══════════════════ 2. CPU → GPU ══════════════════ -->
+<section id="s2">
+<h2 class="reveal">2. CPU → GPU: 1 memcpy mỗi frame</h2>
+
+<h3 class="reveal">Loại bỏ data copies</h3>
+<div class="reveal">
+<p>Simulation (CPU) tạo data mỗi frame, GPU cần đọc để vẽ. Hệ thống ban đầu có <strong>4 copies</strong>:</p>
+
+<div class="card">
+<pre style="background:none!important;border:none!important;padding:0!important;margin:0!important;font-size:.78rem!important"><code class="language-csharp">Ban đầu (4 copies):
+SoA arrays ──COPY 1──► Provider List&lt;T&gt; ──COPY 2──► Drawer List&lt;T&gt; ──COPY 3──► SetData ──► GPU
+  positions[]              list.Add(struct)       destructure→       pin + memcpy
+  radii[]                                         AddParticle()→
+  colors[]                                        reassemble→Add()
+
+Hiện tại (1 copy):
+SoA arrays ──ghi thẳng──► NativeArray (CPU staging) ──SetData──► GPU
+                          persistent, grow-only          memcpy</code></pre>
+</div>
+
+<table>
+  <tr><th>Bước tối ưu</th><th>Copy loại bỏ</th><th>Cách</th></tr>
+  <tr><td>Bỏ Provider <code>List&lt;T&gt;</code></td><td>Copy #1</td><td>Provider chỉ giữ drawer reference, không giữ data</td></tr>
+  <tr><td>Bỏ <code>AddParticle()</code> per-element loop</td><td>Copy #2</td><td>Drawer không giữ list riêng, nhận data trực tiếp qua NativeArray</td></tr>
+  <tr><td>Bỏ <code>SetData(List&lt;T&gt;)</code></td><td>Copy #3 (pin)</td><td><code>NativeArray</code> unmanaged — không cần GC pin</td></tr>
+</table>
+
+<p>Copy còn lại: 1 memcpy trong <code>SetData(NativeArray, 0, 0, count)</code> — driver tự handle cache coherence, an toàn trên mọi GPU driver kể cả mobile Vulkan.</p>
+</div>
+
+<h3 class="reveal">NativeArray — CPU staging buffer</h3>
+<div class="reveal">
+<p><code>NativeArray&lt;T&gt;</code> nằm trên <strong>unmanaged heap</strong> — ngoài GC. So với <code>List&lt;T&gt;</code>:</p>
+<table>
+  <tr><th></th><th>List&lt;T&gt;</th><th>NativeArray&lt;T&gt;</th></tr>
+  <tr><td>Bộ nhớ</td><td>Managed heap (GC scan)</td><td>Unmanaged heap (no GC)</td></tr>
+  <tr><td>SetData()</td><td>GC pin → memcpy → unpin</td><td>memcpy trực tiếp</td></tr>
+  <tr><td>Lifecycle</td><td>GC thu hồi</td><td>Developer gọi Dispose()</td></tr>
+</table>
+<p>Dùng <code>Allocator.Persistent</code> (sống qua nhiều frame) + <code>UninitializedMemory</code> (không zero-fill, sim sẽ ghi đè hết).</p>
+</div>
+
+<h3 class="reveal">Ba cách upload, từ chậm đến nhanh</h3>
+<div class="card reveal">
+<pre style="background:none!important;border:none!important;padding:0!important;margin:0!important;font-size:.78rem!important"><code class="language-csharp">Cách 1: SetData(List&lt;T&gt;)           Cách 2: SetData(NativeArray&lt;T&gt;) ✓    Cách 3: LockBufferForWrite()
+┌──────────────┐                   ┌──────────────┐                    ┌──────────────┐
+│ List&lt;T&gt;      │ managed heap      │ NativeArray  │ unmanaged          │ NativeArray  │ GPU staging
+│ (GC tracked) │                   │ (no GC)      │                    │ (mapped)     │
+└──────┬───────┘                   └──────┬───────┘                    └──────┬───────┘
+       │ pin + memcpy                     │ memcpy                            │ ← sim ghi thẳng
+       ▼                                  ▼                                   │
+┌──────────────┐                   ┌──────────────┐                           │
+│ Staging buf  │                   │ Staging buf  │                           │
+└──────┬───────┘                   └──────┬───────┘                           │
+       │ DMA                              │ DMA                               │ (không copy)
+       ▼                                  ▼                                   ▼
+┌──────────────┐                   ┌──────────────┐                    ┌──────────────┐
+│ GPU VRAM     │                   │ GPU VRAM     │                    │ GPU đọc      │
+└──────────────┘                   └──────────────┘                    └──────────────┘
+    2 copies                           1 copy                              0 copies</code></pre>
+</div>
+
+<div class="note reveal">
+  <strong>Tại sao dùng Cách 2, không phải Cách 3 (zero-copy)?</strong> Trên mobile Vulkan (Mali Valhall — G610, G710, G720), driver không flush CPU cache → GPU đọc stale data → particles invisible. Unity không expose memory barrier API để workaround. <code>SetData(NativeArray)</code> qua Unity's managed upload path — driver tự xử lý cache coherence. Chi phí: 10K × 16B = 160 KB ≈ 0.05ms — negligible.
+</div>
+
+<h3 class="reveal">Double buffering</h3>
+<div class="reveal">
+<p>CPU và GPU chạy <strong>không đồng bộ</strong> — GPU pipeline xử lý lệnh từ frame trước trong khi CPU đã chuyển sang frame tiếp. Nếu chỉ có 1 buffer, CPU ghi đè data mà GPU đang đọc:</p>
+
+<pre><code class="language-csharp">Single buffer:                     Double buffer:
+Frame N:   CPU write → A           Frame N:   CPU write → A    GPU đọc B (frame trước)
+Frame N+1: CPU write → A ⚠️        Frame N+1: CPU write → B    GPU đọc A (frame N)
+           GPU vẫn đang đọc A!    Frame N+2: CPU write → A    GPU đọc B (frame N+1)
+           → race condition                   Không conflict ✓</code></pre>
+
+<p>Triển khai: 2 <code>GraphicsBuffer</code>, swap mỗi frame đầu <code>BeginFrame</code>:</p>
+<pre><code class="language-csharp">writeIndex = (writeIndex + 1) % 2</code></pre>
+
+<p>Trong cùng 1 frame: <code>EndFrame</code> upload vào <code>instanceBuffers[writeIndex]</code>, <code>Draw</code> bind cùng <code>instanceBuffers[writeIndex]</code>. Không mâu thuẫn — vì <code>EndFrame</code> (CPU) hoàn thành trước khi <code>Draw</code> record command, và GPU execute draw command sau khi upload xong. Buffer còn lại (<code>writeIndex</code> cũ) là buffer frame trước mà GPU pipeline có thể vẫn đang đọc — nhờ swap, CPU không đụng vào nó.</p>
+
+<p>Chi phí: thêm 1 buffer (10K × 16B = 160 KB).</p>
+
+<div class="note">
+  <strong>Color packing at Start() vs Update():</strong> Debug sim pack color 1 lần ở <code>Start()</code> (cold path). Simulation thật nếu color thay đổi mỗi frame → pack trong Update vẫn rẻ hơn truyền <code>Color</code> 16 bytes.
+</div>
+</div>
+
+<div class="demo reveal">
+  <div class="demo-title">▶ Double Buffering — nhấn Step để xem buffer swap</div>
+  <div style="text-align:center">
+    <div style="font-family:var(--mono);font-size:.9rem;margin-bottom:.8rem">Frame: <span id="dbFrame" style="color:var(--ac);font-weight:700">0</span> · writeIndex: <span id="dbWrite" style="color:var(--ac);font-weight:700">0</span></div>
+    <div class="db-vis">
+      <div>
+        <div class="db-buf" id="dbA" style="background:var(--bg3)">A</div>
+        <div class="db-label" id="dbALabel">idle</div>
+      </div>
+      <div style="font-size:1.5rem;color:var(--tx3)">⇄</div>
+      <div>
+        <div class="db-buf" id="dbB" style="background:var(--bg3)">B</div>
+        <div class="db-label" id="dbBLabel">idle</div>
+      </div>
+    </div>
+    <div class="db-controls">
+      <button id="dbStepBtn">Step →</button>
+      <button id="dbAutoBtn">Auto ▶</button>
+      <button id="dbResetBtn">Reset</button>
+    </div>
+  </div>
+</div>
+
+<h3 class="reveal">Grow-only buffer</h3>
+<div class="reveal">
+<p>Khi particle count giảm (10K → 5K), buffer <strong>không shrink</strong> — giữ capacity 10K. <code>args[1] = count</code> giới hạn GPU chỉ đọc 5K đầu. Tránh tạo/hủy <code>GraphicsBuffer</code> liên tục → stutter.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 3. GPU DRAWING ════════════════ -->
+<section id="s3">
+<h2 class="reveal">3. GPU vẽ circle: Instancing + SDF</h2>
+
+<h3 class="reveal">GPU Instancing</h3>
+<div class="reveal">
+<p>Bottleneck khi render nhiều particles: <strong>số draw calls</strong>, không phải số polygon. GPU Instancing vẽ cùng 1 mesh <strong>N lần</strong> trong <strong>1 draw call</strong>. Mỗi instance dùng <code>SV_InstanceID</code> (GPU tự tăng 0, 1, 2...) đọc data riêng từ <code>StructuredBuffer</code>.</p>
+
+<table>
+  <tr><th>API</th><th>Giới hạn</th><th>Data</th><th>Lý do</th></tr>
+  <tr><td><code>DrawMeshInstanced</code></td><td>1.023 instances</td><td>Transform matrix only</td><td>✗ Không đủ, data cứng nhắc</td></tr>
+  <tr><td><code>DrawMeshInstancedIndirect</code></td><td>Không giới hạn</td><td>Tùy ý qua StructuredBuffer</td><td>✓ <strong>Đang dùng</strong></td></tr>
+</table>
+
+<p><code>argsBuffer</code> (5 × uint) cho GPU biết vẽ bao nhiêu, mapping tới hardware API <code>DrawIndexedInstancedIndirect</code>:</p>
+<table>
+  <tr><th>[0] indexCount</th><th>[1] instanceCount</th><th>[2] startIndex</th><th>[3] baseVertex</th><th>[4] startInstance</th></tr>
+  <tr><td style="text-align:center">6</td><td style="text-align:center;color:var(--ac);font-weight:700">N</td><td style="text-align:center">0</td><td style="text-align:center">0</td><td style="text-align:center">0</td></tr>
+</table>
+<p><code>indexCount = 6</code>: 1 quad = 2 triangles × 3 vertices. Chỉ re-upload args khi N thay đổi.</p>
+</div>
+
+<h3 class="reveal">SDF (Signed Distance Field)</h3>
+<div class="reveal">
+<p>GPU chỉ biết vẽ tam giác. SDF dùng 1 <strong>quad</strong> (4 vertices), fragment shader tính per-pixel:</p>
+<pre><code class="language-glsl">SDF(p) = length(p) − radius
+//  &lt; 0 → inside    = 0 → edge    &gt; 0 → outside</code></pre>
+<p><code>length(p) = √(x² + y²)</code> — khoảng cách Euclidean từ pixel đến tâm. Trừ radius: âm = bên trong circle.</p>
+
+<table>
+  <tr><th></th><th>Polygon (64 cạnh)</th><th>SDF</th></tr>
+  <tr><td>Zoom gần</td><td>Thấy cạnh</td><td>Luôn tròn hoàn hảo (tính per-pixel)</td></tr>
+  <tr><td>Vertices/instance</td><td>192</td><td>4</td></tr>
+  <tr><td>Anti-aliasing</td><td>Cần MSAA (4–8× fragment cost)</td><td><code>fwidth()</code> (1 instruction)</td></tr>
+</table>
+</div>
+
+<div class="demo reveal">
+  <div class="demo-title">▶ SDF — di chuột trên circle để thấy giá trị khoảng cách</div>
+  <div style="text-align:center">
+    <canvas id="sdfCanvas" width="400" height="300"></canvas>
+    <div class="sdf-info" id="sdfInfo"><span id="sdfVal"></span><span id="sdfDetail"></span></div>
+  </div>
+</div>
+
+<h3 class="reveal">Anti-aliasing: fwidth + smoothstep</h3>
+<div class="reveal">
+<p>Nếu chỉ check <code>sdf &lt; 0 → ON, ≥ 0 → OFF</code>, biên bị <strong>răng cưa</strong>. Cần gradient 1-pixel tại biên:</p>
+
+<pre><code class="language-glsl">float fw    = fwidth(sdf);  // "1 pixel rộng bao nhiêu đơn vị SDF"
+float alpha = 1.0 - smoothstep(-0.5 * fw, 0.5 * fw, sdf);</code></pre>
+
+<p><code>fwidth()</code> là <strong>hardware derivative</strong> — GPU so sánh giá trị <code>sdf</code> giữa pixel lân cận trong block 2×2:</p>
+<pre><code class="language-glsl">fwidth(sdf) = |dFdx(sdf)| + |dFdy(sdf)|
+// dFdx ≈ sdf(pixel_phải) − sdf(pixel_hiện_tại)
+// dFdy ≈ sdf(pixel_dưới)  − sdf(pixel_hiện_tại)</code></pre>
+
+<p><strong>Tự động đúng</strong> cho mọi camera type và zoom level — vì đo trực tiếp trên screen space.</p>
+
+<p><code>smoothstep(edge0, edge1, x)</code> — đường cong Hermite (chữ S): <em>t² × (3 − 2t)</em>. Đạo hàm = 0 tại hai đầu → gradient mượt, không "bước nhảy".</p>
+</div>
+
+<div class="demo reveal">
+  <div class="demo-title">▶ Smoothstep curve — transition zone 1 pixel</div>
+  <div style="text-align:center">
+    <canvas id="ssCanvas" width="500" height="240"></canvas>
+    <div class="ss-legend"><span class="l-alpha">alpha (opacity)</span><span class="l-sdf">SDF = 0 (edge)</span></div>
+  </div>
+</div>
+
+<div class="note reveal">
+  <strong>AA padding:</strong> Quad phải lớn hơn circle để fragment shader có chỗ vẽ gradient. Vertex shader mở rộng thêm <code>aaPadding = radius × 0.1</code> (world-space) hoặc <code>2.0</code> pixel (screen-space).
+</div>
+
+<h3 class="reveal">Tại sao fwidth() thay vì invTexelSize (approach SebVis)?</h3>
+<div class="reveal">
+<table>
+  <tr><th></th><th>SebVis: <code>saturate(0.5 - sdf * invTexelSize)</code></th><th>Hiện tại: <code>fwidth()</code> + <code>smoothstep()</code></th></tr>
+  <tr><td>Tính toán</td><td>Vertex shader tính <code>invTexelSize</code> từ <code>unity_OrthoParams</code></td><td>Fragment shader gọi hardware <code>fwidth()</code></td></tr>
+  <tr><td>Camera type</td><td>Chỉ orthographic</td><td><strong>Mọi camera</strong> (ortho + perspective)</td></tr>
+  <tr><td>Zoom handling</td><td>Manual scale</td><td>Tự động</td></tr>
+  <tr><td>Gradient shape</td><td>Tuyến tính (<code>saturate</code>)</td><td>Chữ S (<code>smoothstep</code>) — mượt hơn, đạo hàm = 0 tại hai đầu</td></tr>
+</table>
+<p><code>fwidth()</code> đắt hơn <code>invTexelSize</code> (~1 instruction vs precomputed), nhưng đúng cho mọi trường hợp mà không cần biết camera type.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 4. FRAME LIFECYCLE ════════════ -->
+<section id="s4">
+<h2 class="reveal">4. Frame lifecycle</h2>
+<div class="card reveal">
+<pre style="background:none!important;border:none!important;padding:0!important;margin:0!important;font-size:.82rem!important"><code class="language-csharp">// ── Update() ──────────────────────     // ── Render (per camera) ──────
+
+BeginFrame(count)                         Draw(cmd, cam)
+  frameDataReady = false                    skip if !frameDataReady
+  swap writeIndex                           cmd.SetGlobalBuffer(InstanceData)
+  ensure GPU buffer capacity                cmd.SetGlobalVector(ScreenSize)
+  ensure CPU staging capacity               cmd.SetGlobalInt(useScreenSpace=0)
+  return cpuStaging NativeArray             cmd.SetGlobalInt(InstanceOffset=0)
+                                            cmd.SetGlobalMatrix(VP matrix)
+nativeArray[i] = {center, radius, color}    DrawMeshInstancedIndirect
+
+EndFrame(count)
+  SetData(nativeArray → GPU buffer)
+  update argsBuffer (if count changed)
+  frameDataReady = true</code></pre>
+</div>
+<div class="reveal">
+<p><code>Draw</code> an toàn gọi nhiều lần/frame (multi-camera) — chỉ bind + draw, không upload lại data. Mỗi camera nhận VP matrix và ScreenSize riêng.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 5. SHADER ═════════════════════ -->
+<section id="s5">
+<h2 class="reveal">5. Shader</h2>
+
+<h3 class="reveal">CBUFFER + StructuredBuffer</h3>
+<div class="reveal">
+<pre><code class="language-glsl">CBUFFER_START(ParticleUniforms)
+    float4x4 WorldToClipSpace;   // VP matrix, per-camera
+    float2   ScreenSize;         // viewport size, per-camera
+    int      useScreenSpace;     // 0 = world-space, ≠0 = screen-space
+    uint     InstanceOffset;     // offset vào StructuredBuffer
+CBUFFER_END
+
+StructuredBuffer&lt;ParticleData&gt; InstanceData;  // particle data</code></pre>
+
+<p><strong>CBUFFER explicit:</strong> D3D11 tự gom loose globals vào <code>$Globals</code>. Vulkan SPIR-V compiler không có cơ chế này → binding sai.</p>
+
+<p><strong><code>cmd.SetGlobal*()</code> thay vì <code>material.Set*()</code>:</strong> <code>material.Set*()</code> là immediate mode — Vulkan descriptor set caching có thể khiến property changes chưa visible khi GPU execute. <code>cmd.SetGlobal*()</code> ghi vào <strong>command stream</strong> → GPU đọc đúng lúc.</p>
+
+<div class="card reveal">
+<pre style="background:none!important;border:none!important;padding:0!important;margin:0!important;font-size:.82rem!important"><code class="language-csharp">material.Set*() (immediate)              cmd.SetGlobal*() (deferred) ✓
+┌──────────────────────┐                ┌──────────────────────┐
+│ CPU: set property    │                │ Record: ghi vào cmd  │
+│ GPU: đọc khi nào?    │ ← race        │ Execute: GPU đọc     │ ← deterministic
+│      có thể stale    │                │          đúng lúc    │
+└──────────────────────┘                └──────────────────────┘</code></pre>
+</div>
+
+<p>Trên D3D11 Editor, driver tự sync material state trước mỗi draw call nên <code>material.Set*()</code> vẫn hoạt động — lỗi chỉ lộ trên Vulkan build.</p>
+
+<table>
+  <tr><th>Uniform</th><th>Type</th><th>Cách set</th></tr>
+  <tr><td><code>InstanceData</code> (buffer)</td><td>StructuredBuffer</td><td><code>cmd.SetGlobalBuffer</code> — rebind sau double buffer swap</td></tr>
+  <tr><td><code>WorldToClipSpace</code></td><td>float4x4</td><td><code>cmd.SetGlobalMatrix</code> — per-camera</td></tr>
+  <tr><td><code>ScreenSize</code></td><td>float2</td><td><code>cmd.SetGlobalVector</code> — per-camera</td></tr>
+  <tr><td><code>useScreenSpace</code></td><td>int</td><td><code>cmd.SetGlobalInt</code> — constant (= 0)</td></tr>
+  <tr><td><code>InstanceOffset</code></td><td>uint</td><td><code>cmd.SetGlobalInt</code> — constant (= 0)</td></tr>
+</table>
+</div>
+
+<h3 class="reveal">Render state</h3>
+<div class="reveal">
+<table>
+  <tr><th>State</th><th>Giá trị</th><th>Tại sao</th></tr>
+  <tr><td>ZWrite</td><td>Off</td><td>Circles không che nhau theo depth</td></tr>
+  <tr><td>ZTest</td><td>Always</td><td>Overlay trên mọi 3D objects</td></tr>
+  <tr><td>Cull</td><td>Off</td><td>Quad 2D, vẽ cả 2 mặt</td></tr>
+  <tr><td>Blend</td><td>SrcAlpha OneMinusSrcAlpha</td><td><code>final = circle × α + bg × (1−α)</code></td></tr>
+</table>
+</div>
+
+<h3 class="reveal">Vertex shader</h3>
+<div class="reveal">
+<pre><code class="language-glsl">v2f vert(appdata v, uint instanceID : SV_InstanceID)
+{
+    ParticleData p = InstanceData[instanceID + InstanceOffset];
+
+    float2 aaPadding = useScreenSpace ? 2.0 : p.radius * 0.1;
+    float2 localVert = v.vertex.xy * (p.radius * 2 + aaPadding);
+    float3 worldPos  = float3(localVert + p.center, 0);
+
+    o.clipPos  = WorldToClipPos(worldPos);
+    o.localPos = localVert;    // dùng cho SDF
+    o.radius   = p.radius;
+    o.color    = UnpackColor(p.packedColor);
+}</code></pre>
+<ol>
+  <li>Đọc particle data: <code>InstanceData[instanceID + InstanceOffset]</code></li>
+  <li>Tính quad size: <code>diameter = radius × 2</code>, thêm <code>aaPadding</code> cho gradient biên</li>
+  <li>Scale vertex: <code>localVert = v.vertex.xy × (diameter + aaPadding)</code></li>
+  <li>Dịch về vị trí particle: <code>worldPos = float3(localVert + center, 0)</code></li>
+  <li>Transform: <code>clipPos = WorldToClipPos(worldPos)</code></li>
+  <li>Pass cho fragment: <code>localPos</code> (dùng cho SDF), <code>radius</code>, <code>color</code> (unpacked)</li>
+</ol>
+<p><code>WorldToClipPos</code> hỗ trợ 2 mode:</p>
+<ul>
+  <li><strong>World-space</strong> (<code>useScreenSpace = 0</code>): <code>mul(WorldToClipSpace, float4(worldPos, 1))</code> — nhân VP matrix</li>
+  <li><strong>Screen-space</strong> (<code>useScreenSpace ≠ 0</code>): <code>worldPos.xy / ScreenSize × 2 − 1</code> — map pixel coords → NDC</li>
+</ul>
+</div>
+
+<h3 class="reveal">Fragment shader</h3>
+<div class="reveal">
+<pre><code class="language-glsl">half4 frag(v2f i) : SV_Target
+{
+    float sdf   = length(i.localPos) - i.radius;    // signed distance
+    float fw    = fwidth(sdf);                       // 1 pixel width
+    float alpha = 1.0 - smoothstep(-0.5*fw, 0.5*fw, sdf);
+    return half4(i.color.rgb, i.color.a * alpha);
+}</code></pre>
+<p>3 instruction làm mọi thứ: tính khoảng cách → đo pixel width → tạo gradient.</p>
+</div>
+
+<h3 class="reveal">VP matrix</h3>
+<div class="reveal">
+<pre><code class="language-csharp">Matrix4x4 vp = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true)
+             * cam.worldToCameraMatrix;</code></pre>
+<ul>
+  <li><code>worldToCameraMatrix</code> = <strong>View</strong> (V) — world → camera-local</li>
+  <li><code>projectionMatrix</code> = <strong>Projection</strong> (P) — camera-local → clip space</li>
+  <li><code>GL.GetGPUProjectionMatrix(..., true)</code> — chuyển P sang GPU-native: Y-flip (Vulkan), depth range (D3D [0,1] vs GL [−1,1]). <code>true</code> = render vào render texture</li>
+  <li>Kết quả: <code>VP = P × V</code> — nhân theo thứ tự này vì HLSL <code>mul(VP, position)</code> = <code>VP × position</code></li>
+</ul>
+</div>
+</section>
+
+<!-- ═══════════════════ 6. URP ════════════════════════ -->
+<section id="s6">
+<h2 class="reveal">6. URP Integration</h2>
+
+<h3 class="reveal">Tổng quan</h3>
+<div class="reveal">
+<div class="arch"><em>ScriptableRendererFeature</em> (composition root, sống qua domain reload)
+  ├─ Create()          → tạo drawer + pass, đăng ký provider
+  ├─ AddRenderPasses() → enqueue pass mỗi frame
+  └─ Dispose()         → giải phóng GPU resources
+
+<em>ScriptableRenderPass</em> (bridge URP ↔ IInstanceDrawer)
+  ├─ RecordRenderGraph()  → Unity 6+ RenderGraph (AddUnsafePass)
+  └─ Execute()            → Legacy Compatibility Mode</div>
+
+<p><code>ParticleRendererFeature</code> (ScriptableObject) là <strong>composition root</strong> — tạo drawer + pass, đăng ký provider:</p>
+<pre><code class="language-csharp">public override void Create()
+{
+    ReleaseResources();   // URP gọi Create() nhiều lần → prevent leak
+    drawer = new ParticleDrawer();
+    renderPass = new ParticleRenderPass(drawer);
+    ParticleProvider.Register(drawer);
+}</code></pre>
+</div>
+
+<h3 class="reveal">RenderGraph path</h3>
+<div class="reveal">
+<p><code>AddUnsafePass</code> (không phải <code>AddRasterPass</code>) vì <code>DrawMeshInstancedIndirect</code> là raw command buffer operation.</p>
+<pre><code class="language-csharp">using var builder = renderGraph.AddUnsafePass&lt;PassData&gt;("ParticleRendering", out var passData);
+
+builder.UseTexture(activeColorTexture, AccessFlags.ReadWrite);  // alpha blending
+builder.UseTexture(activeDepthTexture, AccessFlags.Read);
+builder.AllowPassCulling(false);  // RenderGraph không detect procedural draw
+
+builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =&gt;
+{
+    // Explicit bind — AddUnsafePass KHÔNG auto-bind render targets
+    context.cmd.SetRenderTarget(data.colorTarget, data.depthTarget);
+    var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+    data.drawer.Draw(cmd, data.camera);
+});</code></pre>
+</div>
+
+<h3 class="reveal">PassData</h3>
+<div class="reveal">
+<p><strong>Class, không phải struct</strong> — RenderGraph pool instances nội bộ, gán qua <code>out</code> parameter. Struct sẽ bị copy, mất reference. RenderGraph pool <code>PassData</code> sau frame đầu → <strong>zero heap allocation</strong> từ frame thứ 2. <strong>Static lambda</strong> → zero closure capture → zero GC.</p>
+</div>
+
+<h3 class="reveal">Static bridge</h3>
+<div class="reveal">
+<p><code>ScriptableRendererFeature</code> (ScriptableObject) không thể reference MonoBehaviour trực tiếp. 3 phương án:</p>
+<table>
+  <tr><th>Phương án</th><th>Cách hoạt động</th><th>Trade-off</th></tr>
+  <tr><td><strong>Static field ✓</strong></td><td>Provider giữ static reference</td><td>Đơn giản nhất. Đủ cho single-drawer</td></tr>
+  <tr><td>Singleton</td><td><code>ParticleDrawer.Instance</code></td><td>Cần MonoBehaviour → phải sống trên GameObject</td></tr>
+  <tr><td>SO bridge</td><td>Cả 2 reference cùng 1 SO asset</td><td>Cần tạo asset, đúng cho Inspector config</td></tr>
+</table>
+<p><code>ParticleProvider</code> — static class làm cầu nối:</p>
+<pre><code class="language-csharp">public static class ParticleProvider
+{
+    private static ParticleDrawer instance;
+    internal static IInstanceWriter&lt;ParticleRenderData&gt; Writer =&gt; instance;
+    internal static IInstanceDrawer Drawer =&gt; instance;
+}</code></pre>
+<p>Simulation chỉ thấy <code>IInstanceWriter&lt;T&gt;</code>, render pass chỉ thấy <code>IInstanceDrawer</code>. Cùng 1 <code>ParticleDrawer</code>, nhưng consumer không biết nhau.</p>
+</div>
+
+<h3 class="reveal">Lazy material</h3>
+<div class="reveal">
+<p><code>Resources.Load&lt;Shader&gt;("ParticleDraw")</code> — load trực tiếp. <code>Shader.Find()</code> chỉ tìm shader referenced bởi material asset hoặc Always Included Shaders → trả <code>null</code> trên build (vì material được tạo runtime). <code>EnsureMaterial()</code> retry mỗi frame, thành công rồi thì chỉ check null — 1 branch.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 7. GRAPHICSBUFFER ═════════════ -->
+<section id="s7">
+<h2 class="reveal">7. GraphicsBuffer thay vì ComputeBuffer</h2>
+<div class="reveal">
+<table>
+  <tr><th></th><th><code>ComputeBuffer</code></th><th><code>GraphicsBuffer</code></th></tr>
+  <tr><td>Unity 6 status</td><td>Legacy, vẫn hoạt động</td><td><strong>Recommended API</strong></td></tr>
+  <tr><td>API</td><td>Tách type theo <code>ComputeBufferType</code></td><td><code>GraphicsBuffer.Target</code> — nhất quán hơn</td></tr>
+  <tr><td><code>SetData(NativeArray)</code></td><td>Hỗ trợ</td><td>Hỗ trợ</td></tr>
+  <tr><td>Indirect args</td><td><code>ComputeBufferType.IndirectArguments</code></td><td><code>GraphicsBuffer.Target.IndirectArguments</code></td></tr>
+  <tr><td>Structured data</td><td><code>ComputeBufferType.Structured</code></td><td><code>GraphicsBuffer.Target.Structured</code></td></tr>
+</table>
+<p>Hệ thống dùng 2 target:</p>
+<ul>
+  <li><code>GraphicsBuffer.Target.Structured</code> — instance data buffer (particle structs)</li>
+  <li><code>GraphicsBuffer.Target.IndirectArguments</code> — args buffer (5 × uint)</li>
+</ul>
+</div>
+</section>
+
+<!-- ═══════════════════ 8. SAFETY ═════════════════════ -->
+<section id="s8">
+<h2 class="reveal">8. Safety guards</h2>
+<div class="reveal">
+<table>
+  <tr><th>Guard</th><th>Vị trí</th><th>Chống</th></tr>
+  <tr><td><code>!EnsureMaterial()</code></td><td>BeginFrame</td><td>Shader chưa load</td></tr>
+  <tr><td><code>count == 0</code></td><td>BeginFrame, EndFrame</td><td>Tạo buffer thừa</td></tr>
+  <tr><td><code>frameDataReady = false</code></td><td>BeginFrame đầu</td><td>Draw vẽ stale data sau sim destroy</td></tr>
+  <tr><td><code>lastUploadFrame</code></td><td>BeginFrame</td><td>BeginFrame gọi 2 lần/frame → double swap</td></tr>
+  <tr><td>Grow-only staging</td><td>EnsureStagingCapacity</td><td>Alloc/dealloc liên tục</td></tr>
+  <tr><td><code>!frameDataReady || count==0</code></td><td>Draw</td><td>Skip draw khi không có data</td></tr>
+  <tr><td><code>renderPass != null</code></td><td>AddRenderPasses</td><td>Null pass</td></tr>
+  <tr><td><code>ReleaseResources()</code></td><td>Create()</td><td>URP gọi Create() nhiều lần → leak</td></tr>
+  <tr><td><code>buffer.IsValid()</code></td><td>EnsureInstanceBuffer</td><td>Hot reload / device lost</td></tr>
+  <tr><td><code>instance == drawer</code></td><td>Unregister</td><td>Unregister sai instance</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ 9. VULKAN ═════════════════════ -->
+<section id="s9">
+<h2 class="reveal">9. Vulkan / Android — 6 vấn đề D3D11 che giấu</h2>
+<div class="reveal">
+<p>D3D11 trên Editor rất "tha thứ" — tự sync, tự bind, tự gom. Vulkan yêu cầu <strong>explicit</strong> mọi bước:</p>
+<table class="vk-table">
+  <tr><th>#</th><th>Vấn đề</th><th>D3D11 tại sao OK</th><th>Fix</th></tr>
+  <tr><td>1</td><td>CGPROGRAM + UnityCG.cginc</td><td>Backward compat layer</td><td>HLSLPROGRAM + Core.hlsl + URP tag</td></tr>
+  <tr><td>2</td><td>Shader.Find() → null</td><td>Editor register tất cả</td><td>Resources.Load&lt;Shader&gt;()</td></tr>
+  <tr><td>3</td><td>Loose shader globals</td><td>Tự gom vào $Globals</td><td>CBUFFER_START explicit</td></tr>
+  <tr><td>4</td><td>material.Set*() stale</td><td>Auto-sync state</td><td>cmd.SetGlobal*()</td></tr>
+  <tr><td>5</td><td>Không SetRenderTarget</td><td>Inherit từ pass trước</td><td>Explicit SetRenderTarget</td></tr>
+  <tr><td>6</td><td>LockBufferForWrite stale</td><td>Desktop flush OK</td><td>SetData(NativeArray)</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ 10. ARCHITECTURE ══════════════ -->
+<section id="s10">
+<h2 class="reveal">10. Kiến trúc files</h2>
+<div class="reveal">
+<div class="arch">ParticleRendering/
+├─ ParticleRendering.md                ← tài liệu gốc
+├─ ParticleRendering.html              ← trang này
+├─ Resources/
+│   ├─ <em>ParticleDraw.shader</em>             ← SDF circle + color unpack + fwidth AA
+│   └─ <em>SpaceTransformHelper.hlsl</em>       ← CBUFFER uniforms + world/screen transform
+└─ Scripts/
+    ├─ <em>IInstanceWriter.cs</em>              ← interface: BeginFrame / EndFrame
+    ├─ <em>IInstanceDrawer.cs</em>              ← interface: Draw
+    ├─ <em>ParticleRenderData.cs</em>           ← 16B struct + PackColor()
+    ├─ <em>QuadMeshHelper.cs</em>              ← quad mesh factory (4 vertices)
+    ├─ <em>ParticleDrawer.cs</em>              ← core: double buffer + staging + draw
+    ├─ <em>ParticleProvider.cs</em>            ← static bridge (Writer/Drawer)
+    ├─ <em>ParticleRendererFeature.cs</em>     ← URP composition root
+    ├─ <em>ParticleRenderPass.cs</em>          ← URP pass (RenderGraph + Legacy)
+    └─ <em>ParticleDebugSim.cs</em>            ← debug sim</div>
+</div>
+
+<h3 class="reveal">Dependency graph</h3>
+<div class="reveal">
+<div class="arch"><em>ParticleRendererFeature</em> (composition root)
+  ├── creates ──► <em>ParticleDrawer</em> ◄── implements ── IInstanceWriter&lt;T&gt;
+  │                    ▲                            IInstanceDrawer
+  │                    │                            IDisposable
+  ├── creates ──► <em>ParticleRenderPass</em>
+  │                    └── depends on ──► IInstanceDrawer (interface only)
+  │
+  └── registers ──► <em>ParticleProvider</em> (static bridge)
+                       ├── .Writer ──► IInstanceWriter&lt;T&gt; ◄── Simulation
+                       └── .Drawer ──► IInstanceDrawer    ◄── RenderPass</div>
+</div>
+
+<h3 class="reveal">File roles</h3>
+<div class="reveal">
+<table>
+  <tr><th>File</th><th>Vai trò</th></tr>
+  <tr><td><code>ParticleDrawer</code></td><td>Quản lý 2 GraphicsBuffer luân phiên, CPU staging NativeArray, lazy material, grow-only args buffer, phát draw call qua <code>cmd.SetGlobal*()</code>. Implement cả IInstanceWriter lẫn IInstanceDrawer</td></tr>
+  <tr><td><code>ParticleProvider</code></td><td>Static bridge — giữ concrete drawer nội bộ, expose Writer/Drawer qua interface. Writer và drawer phải share cùng buffer lifecycle nên phải là 1 object</td></tr>
+  <tr><td><code>ParticleRendererFeature</code></td><td>Composition root — tạo drawer + pass, đăng ký provider, release khi dispose. Gọi <code>ReleaseResources()</code> trong <code>Create()</code> vì URP gọi Create() nhiều lần</td></tr>
+  <tr><td><code>ParticleRenderPass</code></td><td>RenderGraph: AddUnsafePass + explicit SetRenderTarget + PassData pooled + static lambda. Legacy: CommandBufferPool. Chỉ gọi <code>drawer.Draw()</code> — không upload data</td></tr>
+  <tr><td><code>ParticleDebugSim</code></td><td>Pre-allocate arrays + pre-pack colors trong Start(). Update ghi vào CPU staging NativeArray, EndFrame upload qua SetData</td></tr>
+  <tr><td><code>QuadMeshHelper</code></td><td>Tạo 1×1 quad (4 vertices, 6 indices). <code>UploadMeshData(true)</code> giải phóng CPU copy — mesh chỉ sống trên GPU</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ 11. DEBUG SIM ═════════════════ -->
+<section id="s11">
+<h2 class="reveal">11. Debug sim</h2>
+<div class="reveal">
+<p><code>ParticleDebugSim</code> — MonoBehaviour test rendering pipeline:</p>
+<ul>
+  <li><strong>Start():</strong> pre-allocate tất cả arrays (<code>positions</code>, <code>velocities</code>, <code>radii</code>, <code>packedColors</code>). <code>PackColor()</code> gọi 1 lần ở đây (cold path), không ở Update (hot path)</li>
+  <li><strong>Update():</strong> di chuyển particles (bounce khi chạm biên), ghi thẳng vào <code>NativeArray</code> qua <code>ParticleProvider.Writer</code></li>
+  <li>Runtime Inspector thay đổi <code>particleCount</code> không có hiệu lực — cần restart Play</li>
+</ul>
+</div>
+</section>
+
+<!-- ═══════════════════ 12. TESTING ══════════════════ -->
+<section id="s12">
+<h2 class="reveal">12. Kiểm thử</h2>
+<div class="reveal">
+<table>
+  <tr><th>#</th><th>Kiểm tra</th><th>Pass</th><th>Debug nếu fail</th></tr>
+  <tr><td>1</td><td>Play với ParticleDebugSim</td><td>Circles hiện</td><td>Camera, ZTest, shader error</td></tr>
+  <tr><td>2</td><td>Frame Debugger</td><td>1 draw call "ParticleRendering"</td><td>Buffer/args sai</td></tr>
+  <tr><td>3</td><td>10.000+ particles</td><td>&gt; 60 FPS</td><td>Profiler → SetData</td></tr>
+  <tr><td>4</td><td>Zoom gần 1 circle</td><td>Biên mượt</td><td>AA padding (radius × 0.1)</td></tr>
+  <tr><td>5</td><td>Game + Scene view cùng lúc</td><td>Cả 2 đúng</td><td>VP matrix per-camera</td></tr>
+  <tr><td>6</td><td>Enter/Exit Play 3 lần</td><td>Không error, memory ổn</td><td>ReleaseResources leak</td></tr>
+  <tr><td>7</td><td>Profiler → GC Alloc</td><td>0 trong render path</td><td>Managed allocation</td></tr>
+  <tr><td>8</td><td>Build APK → test trên device</td><td>Circles hiện</td><td><code>adb logcat -s Unity</code></td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ 13. EXTENSIONS ═══════════════ -->
+<section id="s13">
+<h2 class="reveal">13. Mở rộng</h2>
+<div class="reveal">
+<table>
+  <tr><th>Ưu tiên</th><th>Tính năng</th><th>Thay đổi</th></tr>
+  <tr><td>A</td><td>Color gradient theo velocity</td><td>Thêm velocity vào struct, shader lerp màu</td></tr>
+  <tr><td>B</td><td>Depth occlusion</td><td><code>ZTest LEqual</code> — particles bị geometry che</td></tr>
+  <tr><td>C</td><td>Compute shader simulation</td><td>GPU-only pipeline, bỏ CPU staging + SetData</td></tr>
+  <tr><td>D</td><td>Rectangular masking</td><td>maskMin/maskMax trong struct + shader clip</td></tr>
+  <tr><td>E</td><td>Multi-shape</td><td>Type field + SDF cho quad/line/triangle</td></tr>
+</table>
+</div>
+</section>
+
+<!-- ═══════════════════ 14. PERFORMANCE ═══════════════ -->
+<section id="s14">
+<h2 class="reveal">14. Tóm tắt hiệu năng</h2>
+<div class="perf-grid reveal">
+  <div class="perf-card"><div class="perf-val">1</div><div class="perf-label">copy / particle / frame</div></div>
+  <div class="perf-card"><div class="perf-val">16B</div><div class="perf-label">per particle (cache-aligned)</div></div>
+  <div class="perf-card"><div class="perf-val">1</div><div class="perf-label">draw call / camera</div></div>
+  <div class="perf-card"><div class="perf-val">0</div><div class="perf-label">GC alloc in render path</div></div>
+  <div class="perf-card"><div class="perf-val">160KB</div><div class="perf-label">bandwidth (10K particles)</div></div>
+  <div class="perf-card"><div class="perf-val">2×</div><div class="perf-label">double-buffered, grow-only</div></div>
+  <div class="perf-card"><div class="perf-val">cmd.*</div><div class="perf-label">uniform binding (command stream)</div></div>
+  <div class="perf-card"><div class="perf-val">fwidth</div><div class="perf-label">AA: fwidth + smoothstep (1px gradient)</div></div>
+  <div class="perf-card"><div class="perf-val">Native</div><div class="perf-label">CPU staging: NativeArray (persistent)</div></div>
+  <div class="perf-card"><div class="perf-val">HLSL</div><div class="perf-label">Shader: URP Core.hlsl + CBUFFER</div></div>
+</div>
+</section>
+
+</main>
+
+<footer>
+  FelixFelicis · Particle Rendering System · <code>FelixFelicis.ParticleRendering</code>
+</footer>
+
+<!-- ═══════════════════ SCRIPTS ═══════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-glsl.min.js"></script>
+<script>
+// ── Scroll Reveal ──────────────────────────────────────────────
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ── Progress Bar ───────────────────────────────────────────────
+const progressBar = document.getElementById('progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  progressBar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+});
+
+// ── Color Packing Demo ─────────────────────────────────────────
+(function() {
+  const input = document.getElementById('cpColor');
+  const elFloat = document.getElementById('cpFloat');
+  const elBytes = document.getElementById('cpBytes');
+  const elBar = document.getElementById('cpBar');
+  const elPacked = document.getElementById('cpPacked');
+
+  function update() {
+    const hex = input.value;
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    const a = 255;
+
+    elFloat.textContent = `(${(r/255).toFixed(3)}, ${(g/255).toFixed(3)}, ${(b/255).toFixed(3)}, 1.000)`;
+    elBytes.textContent = `(${r}, ${g}, ${b}, ${a})`;
+
+    const packed = (r | (g << 8) | (b << 16) | (a << 24)) >>> 0;
+    elPacked.textContent = `0x${packed.toString(16).toUpperCase().padStart(8, '0')}`;
+
+    const bars = elBar.children;
+    bars[0].textContent = r; bars[0].style.background = `rgb(${r},80,80)`;
+    bars[1].textContent = g; bars[1].style.background = `rgb(80,${g},80)`;
+    bars[2].textContent = b; bars[2].style.background = `rgb(80,80,${b})`;
+    bars[3].textContent = a;
+  }
+
+  input.addEventListener('input', update);
+  update();
+})();
+
+// ── Double Buffering Demo ──────────────────────────────────────
+(function() {
+  const elFrame = document.getElementById('dbFrame');
+  const elWrite = document.getElementById('dbWrite');
+  const bufA = document.getElementById('dbA');
+  const bufB = document.getElementById('dbB');
+  const lblA = document.getElementById('dbALabel');
+  const lblB = document.getElementById('dbBLabel');
+  const btnStep = document.getElementById('dbStepBtn');
+  const btnAuto = document.getElementById('dbAutoBtn');
+  const btnReset = document.getElementById('dbResetBtn');
+  const bufs = [bufA, bufB], labels = [lblA, lblB];
+
+  let frameN = 0, writeIdx = 0, autoId = null;
+
+  function render() {
+    elFrame.textContent = frameN;
+    elWrite.textContent = writeIdx;
+    const readIdx = (writeIdx + 1) % 2;
+
+    for (let i = 0; i < 2; i++) {
+      bufs[i].className = 'db-buf';
+      bufs[i].style.background = 'var(--bg3)';
+      labels[i].textContent = 'idle';
+      labels[i].style.color = 'var(--tx3)';
+    }
+
+    bufs[writeIdx].classList.add('cpu-write');
+    bufs[writeIdx].style.background = 'rgba(88,166,255,.08)';
+    labels[writeIdx].textContent = '✎ CPU write';
+    labels[writeIdx].style.color = 'var(--ac)';
+
+    if (frameN > 0) {
+      bufs[readIdx].classList.add('gpu-read');
+      bufs[readIdx].style.background = 'rgba(63,185,80,.08)';
+      labels[readIdx].textContent = '◉ GPU read';
+      labels[readIdx].style.color = 'var(--gr)';
+    }
+  }
+
+  function step() { frameN++; writeIdx = (writeIdx + 1) % 2; render(); }
+
+  btnStep.addEventListener('click', step);
+  btnAuto.addEventListener('click', function() {
+    if (autoId) { clearInterval(autoId); autoId = null; btnAuto.textContent = 'Auto ▶'; }
+    else { autoId = setInterval(step, 900); btnAuto.textContent = 'Stop ■'; }
+  });
+  btnReset.addEventListener('click', function() {
+    if (autoId) { clearInterval(autoId); autoId = null; btnAuto.textContent = 'Auto ▶'; }
+    frameN = 0; writeIdx = 0; render();
+  });
+
+  render();
+})();
+
+// ── SDF Interactive Demo ───────────────────────────────────────
+// Perf: background SDF heatmap never changes — pre-render once,
+// mousemove only blits cached ImageData + draws lightweight overlay.
+// rAF-guarded so draw runs at most once per frame.
+(function() {
+  const canvas = document.getElementById('sdfCanvas');
+  const ctx = canvas.getContext('2d');
+  const sdfVal = document.getElementById('sdfVal');
+  const sdfDetail = document.getElementById('sdfDetail');
+  const sdfInfo = document.getElementById('sdfInfo');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2, radius = 80;
+
+  // Pre-render SDF background once (120K pixels × sqrt — expensive)
+  const bgImageData = ctx.createImageData(W, H);
+  const d = bgImageData.data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - cx, dy = y - cy;
+      const sdf = Math.sqrt(dx * dx + dy * dy) - radius;
+      const idx = (y * W + x) * 4;
+      if (sdf < 0) {
+        const t = Math.min(1, -sdf / radius);
+        d[idx]     = Math.round(40 + (1-t) * 200);
+        d[idx + 1] = Math.round(60 + (1-t) * 180);
+        d[idx + 2] = Math.round(180 + (1-t) * 75);
+      } else {
+        const t = Math.min(1, sdf / (radius * 1.2));
+        d[idx]     = Math.round(240 - t * 190);
+        d[idx + 1] = Math.round(240 - t * 200);
+        d[idx + 2] = Math.round(255 - t * 210);
+      }
+      d[idx + 3] = 255;
+    }
+  }
+
+  function drawOverlay(mx, my) {
+    // Blit cached background (no per-pixel loop)
+    ctx.putImageData(bgImageData, 0, 0);
+
+    // Edge circle
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Static labels
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('SDF = 0', cx + radius + 6, cy + 4);
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SDF < 0 (inside)', cx, cy - 10);
+    ctx.fillText('SDF > 0 (outside)', cx + radius + 50, cy + 50);
+    ctx.textAlign = 'left';
+
+    // Mouse crosshair + value
+    if (mx >= 0 && my >= 0) {
+      const mDx = mx - cx, mDy = my - cy;
+      const dist = Math.sqrt(mDx * mDx + mDy * mDy);
+      const mSdf = dist - radius;
+
+      ctx.strokeStyle = 'rgba(255,255,255,.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(mx, my, 6, 0, Math.PI * 2); ctx.stroke();
+
+      const sdfColor = mSdf < 0 ? '#58a6ff' : '#f85149';
+      sdfVal.textContent = 'SDF = ' + mSdf.toFixed(1);
+      sdfVal.style.color = sdfColor;
+      sdfDetail.textContent = ' · length = ' + dist.toFixed(1) + ' · radius = ' + radius + ' → ' + (mSdf < 0 ? 'inside' : mSdf === 0 ? 'edge' : 'outside');
+      sdfDetail.style.color = '';
+    }
+  }
+
+  drawOverlay(-1, -1);
+
+  // rAF-guarded mousemove — draw at most once per frame, zero allocation
+  let pendingX = -1, pendingY = -1, dirty = false, rafId = 0;
+  function onRaf() {
+    rafId = 0;
+    if (dirty) { drawOverlay(pendingX, pendingY); dirty = false; }
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    pendingX = (e.clientX - rect.left) * W / rect.width;
+    pendingY = (e.clientY - rect.top) * H / rect.height;
+    dirty = true;
+    if (!rafId) rafId = requestAnimationFrame(onRaf);
+  });
+  canvas.addEventListener('mouseleave', () => {
+    dirty = false;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    drawOverlay(-1, -1);
+    sdfVal.textContent = 'Di chuột lên circle...';
+    sdfVal.style.color = '';
+    sdfDetail.textContent = '';
+  });
+})();
+
+// ── Smoothstep Curve Demo ──────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('ssCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = { l: 50, r: 30, t: 20, b: 40 };
+  const gW = W - pad.l - pad.r, gH = H - pad.t - pad.b;
+
+  function smoothstep(e0, e1, x) {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  // SDF range: -2 to 2 (in fw units)
+  const sdfMin = -2, sdfMax = 2;
+  const fw = 1; // normalized to 1
+
+  function sdfToX(sdf) { return pad.l + (sdf - sdfMin) / (sdfMax - sdfMin) * gW; }
+  function alphaToY(a) { return pad.t + (1 - a) * gH; }
+
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const x = pad.l + i / 4 * gW;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + gH); ctx.stroke();
+    const y = pad.t + i / 4 * gH;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + gW, y); ctx.stroke();
+  }
+
+  // Transition zone highlight
+  const x0 = sdfToX(-fw * 0.5), x1 = sdfToX(fw * 0.5);
+  ctx.fillStyle = 'rgba(88,166,255,.07)';
+  ctx.fillRect(x0, pad.t, x1 - x0, gH);
+  ctx.fillStyle = 'rgba(88,166,255,.4)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('◄ 1 pixel ►', (x0 + x1) / 2, pad.t + gH + 30);
+
+  // Alpha curve
+  ctx.strokeStyle = '#58a6ff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= gW; px++) {
+    const sdf = sdfMin + px / gW * (sdfMax - sdfMin);
+    const alpha = 1 - smoothstep(-fw * 0.5, fw * 0.5, sdf);
+    const x = pad.l + px, y = alphaToY(alpha);
+    px === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // SDF = 0 line
+  const edgeX = sdfToX(0);
+  ctx.strokeStyle = 'rgba(248,81,73,.5)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath(); ctx.moveTo(edgeX, pad.t); ctx.lineTo(edgeX, pad.t + gH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes labels
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SDF', pad.l + gW / 2, H - 2);
+  ctx.fillText('inside', sdfToX(-1.2), H - 2);
+  ctx.fillText('outside', sdfToX(1.2), H - 2);
+
+  ctx.textAlign = 'right';
+  ctx.fillText('1.0', pad.l - 6, alphaToY(1) + 4);
+  ctx.fillText('0.5', pad.l - 6, alphaToY(0.5) + 4);
+  ctx.fillText('0.0', pad.l - 6, alphaToY(0) + 4);
+
+  ctx.save();
+  ctx.translate(12, pad.t + gH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('alpha', 0, 0);
+  ctx.restore();
+
+  // SDF=0 label
+  ctx.fillStyle = 'rgba(248,81,73,.7)';
+  ctx.textAlign = 'left';
+  ctx.fillText('SDF = 0', edgeX + 4, pad.t + 14);
+})();
+</script>
+</body>
+</html>

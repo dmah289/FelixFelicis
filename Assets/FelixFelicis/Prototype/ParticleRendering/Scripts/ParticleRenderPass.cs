@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// URP render pass that bridges the engine's rendering pipeline to <see cref="IInstanceDrawer"/>.

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// GPU instance data — must match ParticleData struct in ParticleDraw.shader byte-by-byte.

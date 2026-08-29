@@ -1,7 +1,7 @@
 using Unity.Collections;
 using UnityEngine;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// Debug MonoBehaviour — spawns random particles each frame to test the rendering pipeline.

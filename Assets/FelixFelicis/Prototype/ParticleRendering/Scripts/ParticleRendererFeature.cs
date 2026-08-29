@@ -1,6 +1,6 @@
 using UnityEngine.Rendering.Universal;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// URP composition root for the particle rendering pipeline.

@@ -1,0 +1,166 @@
+using System;
+using Unity.Collections;
+using Unity.Mathematics;
+using UnityEngine;
+
+namespace FelixFelicis.Prototype.ParticleRendering.Simulation
+{
+    /// <summary>
+    /// Bakes two <see cref="EdgeCollider2D"/> walls (left + right) into a
+    /// <see cref="NativeArray{FunnelSegment}"/> for the Burst physics job.
+    /// <para>
+    /// The funnel is a static concave container: wide opening at the top,
+    /// narrow spout at the bottom. Sand enters from above and exits through
+    /// the spout, where it despawns below <see cref="despawnBelowY"/>.
+    /// </para>
+    /// <para>
+    /// All per-segment derived quantities (edge direction, outward normal,
+    /// inverse length², broadphase AABB) are precomputed at bake time —
+    /// the Burst job does zero redundant math per particle.
+    /// </para>
+    /// </summary>
+    public class SandFunnel : MonoBehaviour, IDisposable
+    {
+        [Header("Walls")]
+        [Tooltip("Left funnel wall. Points should be ordered top → bottom.")]
+        [SerializeField] private EdgeCollider2D leftWall;
+
+        [Tooltip("Right funnel wall. Points should be ordered top → bottom.")]
+        [SerializeField] private EdgeCollider2D rightWall;
+
+        [Header("Surface")]
+        [Tooltip("Coulomb friction for funnel walls. Low values = sand slides fast (glass/metal).")]
+        [SerializeField, Range(0f, 2f)]
+        private float friction = 0.05f;
+
+        [Header("Despawn")]
+        [Tooltip("World Y below which particles are despawned (teleport + sleep). " +
+                 "Set below the funnel spout opening.")]
+        [SerializeField]
+        private float despawnBelowY = -12f;
+
+        private NativeArray<FunnelSegment> segments;
+        private int segmentCount;
+        private bool isBaked;
+
+        // ── Public API ────────────────────────────────────────────────
+
+        public float Friction => friction;
+        public float DespawnBelowY => despawnBelowY;
+
+        /// <summary>
+        /// Returns the baked segment data. Must call <see cref="BakeWithMargin"/> first.
+        /// </summary>
+        public NativeArray<FunnelSegment> Segments => segments;
+
+        /// <summary>Baked segment count.</summary>
+        public int SegmentCount => segmentCount;
+
+        /// <summary>Whether segments have been baked.</summary>
+        public bool IsBaked => isBaked;
+
+        /// <summary>
+        /// Bakes segments with a precomputed broadphase margin.
+        /// The margin must cover max particle displacement per substep to catch tunneling.
+        /// Called once by <see cref="FallingSandSim.Start"/> after computing the margin
+        /// from physics params. Re-bake is supported (disposes old data first).
+        /// </summary>
+        public void BakeWithMargin(float broadphaseMargin)
+        {
+            if (leftWall == null || rightWall == null)
+            {
+                Debug.LogError("[SandFunnel] Both leftWall and rightWall must be assigned.", this);
+                return;
+            }
+
+            var leftPoints = leftWall.points;
+            var rightPoints = rightWall.points;
+
+            int leftSegCount = leftPoints.Length - 1;
+            int rightSegCount = rightPoints.Length - 1;
+            segmentCount = leftSegCount + rightSegCount;
+
+            if (segmentCount <= 0)
+            {
+                Debug.LogError("[SandFunnel] EdgeCollider2D must have at least 2 points.", this);
+                return;
+            }
+
+            segments = new NativeArray<FunnelSegment>(
+                segmentCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+
+            int idx = 0;
+
+            // Left wall: outNormal points RIGHT (+X, into funnel interior)
+            var leftTransform = leftWall.transform;
+            for (int i = 0; i < leftSegCount; i++)
+            {
+                var a = (float2)((Vector2)leftTransform.TransformPoint(leftPoints[i]));
+                var b = (float2)((Vector2)leftTransform.TransformPoint(leftPoints[i + 1]));
+                segments[idx++] = BuildSegment(a, b, isLeftWall: true, broadphaseMargin);
+            }
+
+            // Right wall: outNormal points LEFT (-X, into funnel interior)
+            var rightTransform = rightWall.transform;
+            for (int i = 0; i < rightSegCount; i++)
+            {
+                var a = (float2)((Vector2)rightTransform.TransformPoint(rightPoints[i]));
+                var b = (float2)((Vector2)rightTransform.TransformPoint(rightPoints[i + 1]));
+                segments[idx++] = BuildSegment(a, b, isLeftWall: false, broadphaseMargin);
+            }
+
+            isBaked = true;
+        }
+
+        // ── Segment Builder ───────────────────────────────────────────
+
+        private static FunnelSegment BuildSegment(float2 a, float2 b, bool isLeftWall, float margin)
+        {
+            float2 d = b - a;
+            float lenSq = math.dot(d, d);
+
+            // Edge direction d = b - a (points are ordered top → bottom).
+            // Left wall is on the left side (negative X), outNormal must point RIGHT (+X).
+            // Right wall is on the right side (positive X), outNormal must point LEFT (-X).
+            //
+            // For left wall edge going downward: d ≈ (0, -1)
+            //   (-d.y, d.x) = (1, 0) → points right ✓
+            // For right wall edge going downward: d ≈ (0, -1)
+            //   (d.y, -d.x) = (-1, 0) → points left ✓
+            float2 perp = isLeftWall
+                ? new float2(-d.y, d.x)
+                : new float2(d.y, -d.x);
+
+            float2 outNormal = math.normalizesafe(perp, new float2(0f, 1f));
+
+            // Precompute AABB expanded by broadphase margin
+            float2 segMin = math.min(a, b) - margin;
+            float2 segMax = math.max(a, b) + margin;
+
+            return new FunnelSegment
+            {
+                aabbMin = segMin,
+                aabbMax = segMax,
+                a = a,
+                edge = d,
+                outNormal = outNormal,
+                invLenSq = lenSq > 1e-10f ? 1f / lenSq : 0f,
+            };
+        }
+
+        // ── Lifecycle ─────────────────────────────────────────────────
+
+        private void OnDestroy() => Dispose();
+
+        public void Dispose()
+        {
+            if (segments.IsCreated)
+            {
+                segments.Dispose();
+                segments = default;
+            }
+
+            isBaked = false;
+        }
+    }
+}

@@ -1,6 +1,6 @@
 using Unity.Collections;
 
-namespace FelixFelicis.ParticleRendering
+namespace FelixFelicis.Prototype.ParticleRendering
 {
     /// <summary>
     /// Write-side contract for GPU instanced rendering.
